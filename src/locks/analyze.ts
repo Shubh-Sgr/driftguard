@@ -72,6 +72,9 @@ export function analyzeParsed(statements: ParsedStatement[], schema?: Schema): M
   const warnings: string[] = [];
   const results: StatementAnalysis[] = [];
   let lockTimeoutSet = false;
+  // "table.column" pairs proven NOT NULL by a validated CHECK earlier in THIS script,
+  // so a later SET NOT NULL is known to skip its scan (the F6 rewrite relies on this).
+  const notNullChecks = new NotNullCheckTracker();
   let inTransaction = false;
   let exclusiveInTransaction = 0;
 
@@ -90,7 +93,8 @@ export function analyzeParsed(statements: ParsedStatement[], schema?: Schema): M
       }
     }
 
-    const e = effectOf(stmt, schema);
+    const e = effectOf(stmt, schema, notNullChecks);
+    notNullChecks.observe(stmt);
     const mode = e.locks.length ? strongest(e.locks.map((l) => l.mode)) : null;
     // Size of the table being changed (the first lock is always the target table).
     const mainTable = e.locks[0]?.table;
@@ -141,7 +145,7 @@ export function analyzeParsed(statements: ParsedStatement[], schema?: Schema): M
 }
 
 /** Maps one parsed statement to its effect. This is the lock rule table. */
-function effectOf(stmt: ParsedStatement, schema?: Schema): Effect {
+function effectOf(stmt: ParsedStatement, schema: Schema | undefined, checks: NotNullCheckTracker): Effect {
   const n = stmt.node;
   switch (stmt.type) {
     case "SelectStmt":
@@ -177,7 +181,7 @@ function effectOf(stmt: ParsedStatement, schema?: Schema): Effect {
           });
 
     case "AlterTableStmt":
-      return alterTableEffect(stmt, schema);
+      return alterTableEffect(stmt, schema, checks);
 
     case "RenameStmt": {
       const table = rangeVarName(n.relation);
@@ -261,10 +265,10 @@ function effectOf(stmt: ParsedStatement, schema?: Schema): Effect {
   }
 }
 
-function alterTableEffect(stmt: ParsedStatement, schema?: Schema): Effect {
+function alterTableEffect(stmt: ParsedStatement, schema: Schema | undefined, checks: NotNullCheckTracker): Effect {
   const n = stmt.node;
   const table = rangeVarName(n.relation);
-  const parts: Effect[] = (n.cmds ?? []).map((c: AstNode) => alterCmdEffect(table, c.AlterTableCmd, schema));
+  const parts: Effect[] = (n.cmds ?? []).map((c: AstNode) => alterCmdEffect(table, c.AlterTableCmd, schema, checks));
 
   if (parts.length === 1) return parts[0]!;
   // Several sub-commands in one ALTER: one lock (the strongest), all effects combined.
@@ -277,7 +281,7 @@ function alterTableEffect(stmt: ParsedStatement, schema?: Schema): Effect {
   });
 }
 
-function alterCmdEffect(table: string, cmd: AstNode, schema?: Schema): Effect {
+function alterCmdEffect(table: string, cmd: AstNode, schema: Schema | undefined, checks: NotNullCheckTracker): Effect {
   const accessExclusive = [{ table, mode: "ACCESS EXCLUSIVE" as LockMode }];
   const op = (s: string) => `ALTER TABLE ... ${s}`;
 
@@ -324,9 +328,11 @@ function alterCmdEffect(table: string, cmd: AstNode, schema?: Schema): Effect {
 
     case "AT_SetNotNull": {
       // PG 12+: if a VALIDATED CHECK (col IS NOT NULL) already exists, the scan is skipped.
-      const hasCheck = Object.values(schema?.tables[table]?.constraints ?? {}).some(
-        (c) => c.type === "check" && c.validated && isNotNullCheck(c.definition, cmd.name),
-      );
+      const hasCheck =
+        checks.isProven(table, cmd.name) ||
+        Object.values(schema?.tables[table]?.constraints ?? {}).some(
+          (c) => c.type === "check" && c.validated && isNotNullCheck(c.definition, cmd.name),
+        );
       return effect(op("SET NOT NULL"), {
         locks: accessExclusive,
         scans: !hasCheck,
@@ -463,6 +469,37 @@ function collectForeignKeyTargets(node: AstNode, out: string[] = []): string[] {
     for (const v of Object.values(node)) collectForeignKeyTargets(v, out);
   }
   return [...new Set(out)];
+}
+
+/**
+ * Follows CHECK (col IS NOT NULL) constraints through a script: added NOT VALID, then
+ * VALIDATEd (or added valid straight away). Once validated, the column is proven NOT NULL.
+ */
+class NotNullCheckTracker {
+  private pending = new Map<string, string>(); // "table.constraint" -> column
+  private proven = new Set<string>(); // "table.column"
+
+  isProven(table: string, column: string): boolean {
+    return this.proven.has(`${table}.${column}`);
+  }
+
+  observe(stmt: ParsedStatement): void {
+    if (stmt.type !== "AlterTableStmt") return;
+    const table = rangeVarName(stmt.node.relation);
+    for (const { AlterTableCmd: cmd } of stmt.node.cmds ?? []) {
+      if (cmd.subtype === "AT_AddConstraint") {
+        const c = cmd.def.Constraint;
+        const test = c.contype === "CONSTR_CHECK" ? c.raw_expr?.NullTest : undefined;
+        const column = test?.nulltesttype === "IS_NOT_NULL" ? test.arg?.ColumnRef?.fields?.[0]?.String?.sval : undefined;
+        if (!column) continue;
+        if (c.skip_validation) this.pending.set(`${table}.${c.conname}`, column);
+        else this.proven.add(`${table}.${column}`);
+      } else if (cmd.subtype === "AT_ValidateConstraint") {
+        const column = this.pending.get(`${table}.${cmd.name}`);
+        if (column) this.proven.add(`${table}.${column}`);
+      }
+    }
+  }
 }
 
 /** Matches pg_get_constraintdef() output for CHECK (col IS NOT NULL), e.g. CHECK ((col IS NOT NULL)). */
