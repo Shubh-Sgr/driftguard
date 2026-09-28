@@ -1,0 +1,30 @@
+# Two identical PostgreSQL 16 databases. Eval scenarios later mutate `target-db`
+# to create known drift; `source-db` stays as the reference.
+name: driftguard
+
+x-postgres: &postgres
+  image: postgres:16-alpine
+  environment:
+    # Local-only superuser, used by the seed scripts and eval setup — never by DriftGuard itself.
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: postgres
+    POSTGRES_DB: fintech
+  volumes:
+    # Every *.sql file here runs once, in filename order, on first start.
+    - ./seed:/docker-entrypoint-initdb.d:ro
+  healthcheck:
+    # -h 127.0.0.1 matters: during init the entrypoint runs a temporary server that only
+    # listens on the Unix socket. Checking TCP means "healthy" = seed finished + real server up.
+    test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "fintech"]
+    interval: 2s
+    timeout: 3s
+    retries: 90
+
+services:
+  source-db:
+    <<: *postgres
+    ports: ["5433:5432"]
+
+  target-db:
+    <<: *postgres
+    ports: ["5434:5432"]
