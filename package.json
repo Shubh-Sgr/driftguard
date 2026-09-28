@@ -1,0 +1,37 @@
+{
+  "name": "driftguard",
+  "version": "0.1.0",
+  "description": "MCP server + CLI for safe PostgreSQL migrations: drift detection, lock analysis, safe rewrites, checksum verification.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "driftguard": "dist/cli/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "cli": "tsx --env-file=.env src/cli/index.ts",
+    "test": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "db:up": "docker compose -f docker/docker-compose.yml up -d --wait",
+    "db:down": "docker compose -f docker/docker-compose.yml down -v"
+  },
+  "dependencies": {
+    "commander": "^13.1.0",
+    "pg": "^8.23.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9",
+    "vitest": "^3.2.7"
+  }
+}

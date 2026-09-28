@@ -1,0 +1,6 @@
+{
+  // Build only the shipped code; tests and evals are type-checked by `npm run typecheck`.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "rootDir": "src" },
+  "include": ["src"]
+}
