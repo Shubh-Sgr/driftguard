@@ -1,4 +1,6 @@
 # Weekly PRs for outdated dependencies and GitHub Actions (security fixes arrive sooner).
+# Major versions are skipped: they often drop Node versions we support (e.g. vitest 5,
+# commander 15 need Node 22.12+) and deserve a deliberate upgrade, not a bot PR.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -6,6 +8,9 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
