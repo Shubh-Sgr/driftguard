@@ -7,7 +7,7 @@
         "-e", "SOURCE_DATABASE_URL",
         "-e", "TARGET_DATABASE_URL",
         "-e", "DRIFTGUARD_LLM",
-        "ghcr.io/shubh-sgr/driftguard"
+        "driftguard"
       ],
       "env": {
         "SOURCE_DATABASE_URL": "postgres://driftguard_ro:driftguard_ro_local@host.docker.internal:5433/fintech",

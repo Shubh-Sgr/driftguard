@@ -243,7 +243,7 @@ Add `--scope project` to store it in the project's `.mcp.json` (shared with your
 
 **Or a config file.** Works for Claude Code (`.mcp.json` in your project root) and **Cursor** (`.cursor/mcp.json` in the project, or `~/.cursor/mcp.json` for all projects). Copy [examples/mcp.json](examples/mcp.json) there and fix the path.
 
-**Or Docker, no Node needed.** Use [examples/mcp-docker.json](examples/mcp-docker.json). Inside a container `localhost` is the container itself, so the URLs use `host.docker.internal` to reach databases on your machine. The GHCR image is private until the repo owner makes the package public; until then, build it locally (`docker build -t driftguard .`) and use `driftguard` as the image name.
+**Or Docker, no Node needed.** Use [examples/mcp-docker.json](examples/mcp-docker.json). Inside a container `localhost` is the container itself, so the URLs use `host.docker.internal` to reach databases on your machine. Build the image once from the repo folder: `docker build -t driftguard .`
 
 `DRIFTGUARD_LLM=none` means `plan_migration` returns the deterministic rules-only plan. Set `ollama` to let a local model propose plans (they still go through the validator).
 
@@ -319,7 +319,7 @@ Then `npm run cli -- doctor` must say `read_only=true` and `write privileges: no
 npx tsx src/cli/index.ts locks migrations/0042_add_index.sql --offline --fail-on high
 ```
 
-**5. Or run the Docker image** (no Node install): `docker run -i --rm --env-file .env ghcr.io/shubh-sgr/driftguard diff`. Any CLI command works in place of `diff`; with no command it starts the MCP server. `shadow` needs a Docker daemon, so run it from the CLI instead.
+**5. Or run it with Docker** (no Node install): build once with `docker build -t driftguard .`, then `docker run -i --rm --env-file .env driftguard diff`. Any CLI command works in place of `diff`; with no command it starts the MCP server. `shadow` needs a Docker daemon, so run it from the CLI instead.
 
 ## Safety model
 
