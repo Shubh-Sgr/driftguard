@@ -4,7 +4,7 @@ Thanks for your interest! Bug reports, docs fixes, new lock rules and new eval s
 
 ## Set up
 
-Requirements: Node 20+ and Docker.
+Requirements: Node 22 (or 20.12+) and Docker.
 
 ```bash
 git clone https://github.com/Shubh-Sgr/driftguard.git && cd driftguard
