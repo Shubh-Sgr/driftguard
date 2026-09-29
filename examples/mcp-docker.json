@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "driftguard": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-e", "SOURCE_DATABASE_URL",
+        "-e", "TARGET_DATABASE_URL",
+        "-e", "DRIFTGUARD_LLM",
+        "ghcr.io/shubh-sgr/driftguard"
+      ],
+      "env": {
+        "SOURCE_DATABASE_URL": "postgres://driftguard_ro:driftguard_ro_local@host.docker.internal:5433/fintech",
+        "TARGET_DATABASE_URL": "postgres://driftguard_ro:driftguard_ro_local@host.docker.internal:5434/fintech",
+        "DRIFTGUARD_LLM": "none"
+      }
+    }
+  }
+}
