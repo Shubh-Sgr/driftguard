@@ -1,0 +1,312 @@
+{
+  "runAt": "2026-09-29T01:46:08.646Z",
+  "environment": {
+    "node": "v21.6.2",
+    "platform": "darwin arm64",
+    "cpu": "Apple M1 x8",
+    "postgres": "16.15",
+    "llm": null
+  },
+  "locks": [
+    {
+      "sql": "SELECT count(*) FROM transactions WHERE id < 1000",
+      "table": "transactions",
+      "predictedMode": "ACCESS SHARE",
+      "predictedRewrite": false,
+      "measuredMode": "ACCESS SHARE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "UPDATE accounts SET balance = balance WHERE id = 1",
+      "table": "accounts",
+      "predictedMode": "ROW EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "ROW EXCLUSIVE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "CREATE INDEX eval_i1 ON transactions (amount)",
+      "table": "transactions",
+      "predictedMode": "SHARE",
+      "predictedRewrite": false,
+      "measuredMode": "SHARE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "CREATE UNIQUE INDEX eval_i2 ON customers (lower(email))",
+      "table": "customers",
+      "predictedMode": "SHARE",
+      "predictedRewrite": false,
+      "measuredMode": "SHARE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "CREATE INDEX CONCURRENTLY eval_i3 ON cards (last4)",
+      "table": "cards",
+      "predictedMode": "SHARE UPDATE EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "SHARE UPDATE EXCLUSIVE",
+      "measuredRewrite": false,
+      "method": "blocked-request",
+      "modeCorrect": true
+    },
+    {
+      "sql": "ALTER TABLE accounts ADD COLUMN note text",
+      "table": "accounts",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "ACCESS EXCLUSIVE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "ALTER TABLE accounts ADD COLUMN flag boolean NOT NULL DEFAULT false",
+      "table": "accounts",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "ACCESS EXCLUSIVE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "ALTER TABLE accounts ADD COLUMN ref uuid DEFAULT gen_random_uuid()",
+      "table": "accounts",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": true,
+      "measuredMode": "ACCESS EXCLUSIVE",
+      "measuredRewrite": true,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "ALTER TABLE merchants ADD COLUMN seq bigserial",
+      "table": "merchants",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": true,
+      "measuredMode": "ACCESS EXCLUSIVE",
+      "measuredRewrite": true,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "ALTER TABLE accounts ALTER COLUMN balance TYPE numeric(16,2)",
+      "table": "accounts",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "ACCESS EXCLUSIVE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "ALTER TABLE transactions ALTER COLUMN merchant_id TYPE bigint",
+      "table": "transactions",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": true,
+      "measuredMode": "ACCESS EXCLUSIVE",
+      "measuredRewrite": true,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "ALTER TABLE customers ALTER COLUMN email TYPE varchar(320)",
+      "table": "customers",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": true,
+      "measuredMode": "ACCESS EXCLUSIVE",
+      "measuredRewrite": true,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "ALTER TABLE merchants ALTER COLUMN name TYPE varchar(100)",
+      "table": "merchants",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": true,
+      "measuredMode": "ACCESS EXCLUSIVE",
+      "measuredRewrite": true,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "ALTER TABLE merchants ALTER COLUMN region SET NOT NULL",
+      "table": "merchants",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "ACCESS EXCLUSIVE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "ALTER TABLE merchants ALTER COLUMN region DROP DEFAULT",
+      "table": "merchants",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "ACCESS EXCLUSIVE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "ALTER TABLE accounts ALTER COLUMN status SET DEFAULT 'x'",
+      "table": "accounts",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "ACCESS EXCLUSIVE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "ALTER TABLE ledger_entries ADD CONSTRAINT eval_fk FOREIGN KEY (account_id) REFERENCES accounts (id)",
+      "table": "ledger_entries",
+      "predictedMode": "SHARE ROW EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "SHARE ROW EXCLUSIVE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "ALTER TABLE ledger_entries ADD CONSTRAINT eval_fk2 FOREIGN KEY (account_id) REFERENCES accounts (id) NOT VALID",
+      "table": "ledger_entries",
+      "predictedMode": "SHARE ROW EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "SHARE ROW EXCLUSIVE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "ALTER TABLE transactions ADD CONSTRAINT eval_chk CHECK (amount > 0)",
+      "table": "transactions",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "ACCESS EXCLUSIVE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "ALTER TABLE transactions ADD CONSTRAINT eval_chk2 CHECK (amount > 0) NOT VALID",
+      "table": "transactions",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "ACCESS EXCLUSIVE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "ALTER TABLE cards VALIDATE CONSTRAINT cards_last4_len",
+      "table": "cards",
+      "predictedMode": "SHARE UPDATE EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "SHARE UPDATE EXCLUSIVE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "ALTER TABLE customers ADD CONSTRAINT eval_uq UNIQUE (email, country)",
+      "table": "customers",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "ACCESS EXCLUSIVE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "ALTER TABLE cards DROP COLUMN is_active",
+      "table": "cards",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "ACCESS EXCLUSIVE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "ALTER TABLE merchants RENAME COLUMN mcc TO category",
+      "table": "merchants",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "ACCESS EXCLUSIVE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "DROP INDEX cards_account_id_idx",
+      "table": "cards",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "ACCESS EXCLUSIVE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "DROP INDEX CONCURRENTLY accounts_customer_id_idx",
+      "table": "accounts",
+      "predictedMode": "SHARE UPDATE EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "SHARE UPDATE EXCLUSIVE",
+      "measuredRewrite": false,
+      "method": "blocked-request",
+      "modeCorrect": true
+    },
+    {
+      "sql": "TRUNCATE audit_log",
+      "table": "audit_log",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "ACCESS EXCLUSIVE",
+      "measuredRewrite": null,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "VACUUM FULL merchants",
+      "table": "merchants",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": true,
+      "measuredMode": "ACCESS EXCLUSIVE",
+      "measuredRewrite": true,
+      "method": "blocked-request",
+      "modeCorrect": true
+    },
+    {
+      "sql": "CLUSTER merchants USING merchants_pkey",
+      "table": "merchants",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": true,
+      "measuredMode": "ACCESS EXCLUSIVE",
+      "measuredRewrite": true,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "REINDEX INDEX merchants_pkey",
+      "table": "merchants",
+      "predictedMode": "SHARE",
+      "predictedRewrite": false,
+      "measuredMode": "SHARE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    }
+  ]
+}
