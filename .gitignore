@@ -4,3 +4,8 @@ coverage/
 .env
 *.log
 .DS_Store
+
+# Personal/local files created while using DriftGuard
+.mcp.json
+receipt.json
+driftguard-receipt*.json
