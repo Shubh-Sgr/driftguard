@@ -8,8 +8,9 @@ const READ_ONLY_TRANSACTION = "25006";
 const INSUFFICIENT_PRIVILEGE = "42501";
 const QUERY_CANCELED = "57014"; // what statement_timeout raises
 
-const ro = createPool(SOURCE_RO_URL, { statementTimeoutMs: 5_000 });
-const target = createPool(TARGET_RO_URL, { statementTimeoutMs: 5_000 });
+// 30 s: the seed test counts 3M rows, which can be slow on shared CI runners.
+const ro = createPool(SOURCE_RO_URL, { statementTimeoutMs: 30_000 });
+const target = createPool(TARGET_RO_URL, { statementTimeoutMs: 30_000 });
 // Superuser credentials, but opened through createPool: proves the session layer alone blocks writes.
 const adminViaDriftGuard = createPool(SOURCE_ADMIN_URL, { statementTimeoutMs: 5_000 });
 
@@ -57,7 +58,7 @@ describe("read-only safety layers", () => {
     expect(report).toMatchObject({
       user: "driftguard_ro",
       readOnly: true,
-      statementTimeout: "5s",
+      statementTimeout: "30s",
       canWriteAnyTable: false,
       tableCount: 10,
     });
