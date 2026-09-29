@@ -1,6 +1,6 @@
 {
   "name": "driftguard",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP server + CLI for safe PostgreSQL migrations: drift detection, lock analysis, safe rewrites, checksum verification.",
   "license": "MIT",
   "type": "module",

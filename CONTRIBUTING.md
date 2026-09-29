@@ -30,6 +30,7 @@ CI runs the same checks on every pull request.
 - **Safety logic stays deterministic.** Lock rules, safe rewrites and plan validation are plain code with tests. An LLM may propose, but it never decides.
 - **Parameterized queries only.** Identifiers come from the catalog and are quoted with `quoteIdent`/`ident` (`src/sql/ident.ts`).
 - **Every behavior change gets a test.** Pure logic goes in `tests/unit`; anything that needs Postgres goes in `tests/integration`.
+- **User-visible changes get a line in [CHANGELOG.md](CHANGELOG.md)** under "Unreleased".
 - **Numbers in docs must be measured.** If you change an eval result in the README, it must come from `npm run eval`.
 - Readable over clever: short comments explaining *why* on non-obvious decisions.
 

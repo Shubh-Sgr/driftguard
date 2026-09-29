@@ -367,7 +367,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: Shubh-Sgr/driftguard@main   # pin a commit SHA in production
+      - uses: Shubh-Sgr/driftguard@v0.2.0 # or pin the release's commit SHA
         with:
           paths: migrations/**/*.sql     # one glob per line
           fail-on: high                  # optional: fail the check at this risk
