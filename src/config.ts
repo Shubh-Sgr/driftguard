@@ -17,12 +17,16 @@ const EnvSchema = z.object({
   OLLAMA_MODEL: z.string().default("llama3.2"),
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default("gemini-2.0-flash"),
+  // Shadow-run every LLM plan before accepting it (needs Docker). "off" = validator only.
+  DRIFTGUARD_SHADOW_VERIFY: z.enum(["on", "off"]).default("on"),
 });
 
 export interface Config {
   sourceUrl: string;
   targetUrl: string;
   statementTimeoutMs: number;
+  /** Accept an LLM plan only after a passing shadow run. */
+  shadowVerify: boolean;
   llm: {
     provider: "ollama" | "gemini" | "none";
     ollamaUrl: string;
@@ -45,6 +49,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     sourceUrl: parsed.data.SOURCE_DATABASE_URL,
     targetUrl: parsed.data.TARGET_DATABASE_URL,
     statementTimeoutMs: parsed.data.DRIFTGUARD_STATEMENT_TIMEOUT_MS,
+    shadowVerify: parsed.data.DRIFTGUARD_SHADOW_VERIFY === "on",
     llm: {
       provider: parsed.data.DRIFTGUARD_LLM,
       ollamaUrl: parsed.data.OLLAMA_URL,

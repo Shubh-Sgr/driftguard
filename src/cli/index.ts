@@ -4,7 +4,7 @@ import { Command, Option } from "commander";
 import { loadConfig, redactUrl } from "../config.js";
 import { analyzeMigration } from "../locks/analyze.js";
 import { RISK_ORDER, type Risk } from "../locks/risk.js";
-import { renderPlanSql } from "../plan/render.js";
+import { acceptanceNote, renderPlanSql } from "../plan/render.js";
 import { verifyReceipt, type SignedReceipt } from "../receipt/receipt.js";
 import { rewriteMigration } from "../rewrite/rewrite.js";
 import { DriftGuard } from "../service.js";
@@ -121,7 +121,7 @@ program
       if (opts.out) await writeFile(opts.out, sql);
       print(opts.json, { drift, plan }, () => {
         const rejected = plan.attempts.filter((a) => !a.valid);
-        const notes = rejected.map((a) => `-- LLM attempt ${a.attempt} rejected:\n${a.errors.map((e) => `--   ${e}`).join("\n")}`);
+        const notes = rejected.map((a) => `-- LLM attempt ${a.attempt} rejected at the ${a.stage} stage:\n${a.errors.map((e) => `--   ${e}`).join("\n")}`);
         return [...notes, sql].join("\n");
       });
     }),
@@ -136,7 +136,7 @@ program
   .action((opts) =>
     withDriftGuard(async (dg) => {
       const result = await dg.shadow({ useLlm: opts.llm, allowDataLoss: opts.allowDataLoss });
-      print(opts.json, result, () => formatShadow(result.shadow));
+      print(opts.json, result, () => `Plan: ${acceptanceNote(result.plan)}\n${formatShadow(result.shadow)}`);
       if (result.shadow.verdict === "fail") process.exitCode = 1;
     }),
   );

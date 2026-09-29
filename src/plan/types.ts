@@ -39,8 +39,18 @@ export interface PlanStep {
 export interface PlanAttempt {
   attempt: number;
   valid: boolean;
+  /** The last check this attempt reached: where it was rejected, or what accepted it. */
+  stage: "llm" | "shape" | "validator" | "shadow";
   errors: string[];
 }
+
+/**
+ * The result of proving a candidate plan (in practice: a shadow run).
+ * "unavailable" means the proof could not run at all (e.g. Docker is down); it says
+ * nothing about the plan, so the planner must not ask the LLM to "fix" anything.
+ */
+export type PlanVerdict = { ok: true } | { ok: false; errors: string[] } | { unavailable: string };
+export type PlanVerifier = (plan: MigrationPlan) => Promise<PlanVerdict>;
 
 export interface MigrationPlan {
   /** Who wrote the steps. "rules" = DriftGuard's deterministic generator. */
@@ -50,6 +60,14 @@ export interface MigrationPlan {
   steps: PlanStep[];
   /** Every LLM attempt and why it was rejected. Empty for rules-only plans. */
   attempts: PlanAttempt[];
-  /** True if an LLM was asked but every attempt failed validation. */
+  /** True if an LLM was asked but none of its plans was accepted. */
   fellBack: boolean;
+  /** Why the LLM plan was not used; null when it was used or no LLM was asked. */
+  fallbackReason: string | null;
+  /**
+   * What an LLM plan had to pass to be accepted. "validator" alone proves the plan is
+   * safe, not that it is complete; "validator+shadow" also proves the result matches
+   * the source. null for rules-only plans (deterministic, covered by the eval suite).
+   */
+  acceptedBy: "validator+shadow" | "validator" | null;
 }

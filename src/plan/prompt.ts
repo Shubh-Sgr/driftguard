@@ -47,7 +47,7 @@ export function buildPrompt(drift: DriftReport, source: Schema, target: Schema, 
   const facts = { drift: drift.items, sourceTables: describe(source), targetTables: describe(target) };
   let prompt = `Facts (JSON):\n${JSON.stringify(facts, null, 2)}\n\nWrite the plan.`;
   if (feedback?.length) {
-    prompt += `\n\nYour previous plan was rejected by the validator:\n${feedback.map((e) => `- ${e}`).join("\n")}\nFix every problem and return the full corrected plan.`;
+    prompt += `\n\nYour previous plan was rejected (by the validator, or when it was applied to a disposable copy of the target):\n${feedback.map((e) => `- ${e}`).join("\n")}\nFix every problem and return the full corrected plan.`;
   }
   return prompt;
 }

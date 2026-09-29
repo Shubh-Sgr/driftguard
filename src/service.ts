@@ -15,6 +15,7 @@ import type { MigrationPlan } from "./plan/types.js";
 import { createReceipt, type SignedReceipt } from "./receipt/receipt.js";
 import { rewriteMigration, type RewriteResult } from "./rewrite/rewrite.js";
 import { shadowRun, type ShadowReport } from "./shadow/shadow.js";
+import { shadowVerifier } from "./shadow/verifier.js";
 import { findDifferingRowsInTable, verifyData, type TableVerification, type VerifyOptions, type VerifyReport } from "./verify/verify.js";
 
 /**
@@ -66,12 +67,16 @@ export class DriftGuard {
     return rewriteMigration(sql, { schema: await introspect(this.target) });
   }
 
-  /** F7: useLlm=false forces a rules-only plan. */
+  /**
+   * F7: useLlm=false forces a rules-only plan. With an LLM, a plan is accepted only
+   * after the validator AND a shadow run (F10) pass, unless DRIFTGUARD_SHADOW_VERIFY=off.
+   */
   async plan(opts: { useLlm?: boolean } = {}): Promise<{ drift: DriftReport; plan: MigrationPlan }> {
     const { source, target } = await this.schemas();
     const drift = diffSchemas(source, target);
     const llm = opts.useLlm === false ? undefined : this.llmProvider();
-    return { drift, plan: await planMigration({ drift, source, target, llm }) };
+    const verify = llm && this.config.shadowVerify ? shadowVerifier({ targetUrl: this.config.targetUrl, source }) : undefined;
+    return { drift, plan: await planMigration({ drift, source, target, llm, verify }) };
   }
 
   /** F10: plan, then prove it on a disposable copy of the target's schema. */

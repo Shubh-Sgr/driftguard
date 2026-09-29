@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { diffSchemas } from "../../src/diff/diff.js";
 import { LlmError, type LlmProvider } from "../../src/llm/provider.js";
-import { planMigration } from "../../src/plan/plan.js";
-import { renderPlanSql } from "../../src/plan/render.js";
+import { limitFeedback, MAX_FEEDBACK_CHARS, MAX_FEEDBACK_ERRORS, planMigration } from "../../src/plan/plan.js";
+import { acceptanceNote, renderPlanSql } from "../../src/plan/render.js";
+import type { MigrationPlan, PlanVerdict, PlanVerifier } from "../../src/plan/types.js";
 import { validatePlanSql } from "../../src/plan/validate.js";
 import { clone, col, schema, table } from "../helpers/schema.js";
 
@@ -18,17 +19,28 @@ delete target.tables["public.accounts"]!.columns.region;
 target.tables["public.accounts"]!.columns.legacy = col("legacy", "integer");
 const drift = diffSchemas(source, target);
 
-/** A fake LLM that returns canned responses in order. */
-function fakeLlm(...responses: (string | Error)[]): LlmProvider & { calls: number } {
+/** A fake LLM that returns canned responses in order and records the prompts it got. */
+function fakeLlm(...responses: (string | Error)[]): LlmProvider & { calls: number; prompts: string[] } {
   return {
     id: "fake:test",
     calls: 0,
-    async complete() {
+    prompts: [],
+    async complete({ prompt }) {
+      this.prompts.push(prompt);
       const r = responses[this.calls++]!;
       if (r instanceof Error) throw r;
       return r;
     },
   };
+}
+
+/** A fake verifier (stands in for the shadow run) that returns canned verdicts in order. */
+function fakeVerifier(...verdicts: PlanVerdict[]): PlanVerifier & { plans: MigrationPlan[] } {
+  const plans: MigrationPlan[] = [];
+  return Object.assign(async (p: MigrationPlan) => {
+    plans.push(p);
+    return verdicts[plans.length - 1]!;
+  }, { plans });
 }
 const plan = (steps: { sql: string }[]) => JSON.stringify({ summary: "s", steps: steps.map((s, i) => ({ title: `t${i}`, rationale: "r", ...s })) });
 
@@ -78,7 +90,7 @@ describe("guardrail validator", () => {
 describe("planMigration", () => {
   it("builds a rules-only plan without an LLM, keeping data-lossy steps in the contract phase", async () => {
     const p = await planMigration({ drift, source, target });
-    expect(p.author).toBe("rules");
+    expect(p).toMatchObject({ author: "rules", acceptedBy: null, fellBack: false, fallbackReason: null });
     expect(p.steps.map((s) => [s.sql, s.phase])).toEqual([
       ["ALTER TABLE accounts ADD COLUMN region text", "expand"],
       ["ALTER TABLE accounts DROP COLUMN legacy", "contract"],
@@ -90,7 +102,9 @@ describe("planMigration", () => {
   it("uses a valid LLM plan, but computes risk and reversibility itself", async () => {
     const llm = fakeLlm(plan([{ sql: "ALTER TABLE accounts ADD COLUMN region text" }]));
     const p = await planMigration({ drift, source, target, llm });
-    expect(p).toMatchObject({ author: "llm", model: "fake:test", fellBack: false });
+    // No verifier: accepted on the validator alone, and the output says so.
+    expect(p).toMatchObject({ author: "llm", model: "fake:test", fellBack: false, acceptedBy: "validator" });
+    expect(renderPlanSql(p)).toContain("WARNING: accepted by the guardrail validator only");
     expect(p.steps[0]).toMatchObject({ risk: "low", reversibility: "reversible", rollbackSql: "ALTER TABLE accounts DROP COLUMN region" });
   });
 
@@ -112,7 +126,69 @@ describe("planMigration", () => {
 
   it("falls back (without crashing) when the LLM is unreachable", async () => {
     const p = await planMigration({ drift, source, target, llm: fakeLlm(new LlmError("connection refused")) });
-    expect(p).toMatchObject({ author: "rules", fellBack: true });
+    expect(p).toMatchObject({ author: "rules", fellBack: true, fallbackReason: "LLM unavailable: connection refused" });
+    expect(p.attempts[0]!.stage).toBe("llm");
+  });
+
+  it("accepts an LLM plan only after the shadow run passes, retrying with the shadow's errors", async () => {
+    const incomplete = plan([{ sql: "ALTER TABLE accounts ADD COLUMN region text" }]);
+    const complete = plan([{ sql: "ALTER TABLE accounts ADD COLUMN region text" }, { sql: "ALTER TABLE accounts DROP COLUMN legacy" }]);
+    const llm = fakeLlm(incomplete, complete);
+    const verify = fakeVerifier({ ok: false, errors: ["after applying the plan, column public.accounts.legacy (integer) exists only on target"] }, { ok: true });
+
+    const p = await planMigration({ drift, source, target, llm, verify });
+
+    expect(p).toMatchObject({ author: "llm", acceptedBy: "validator+shadow", fellBack: false, fallbackReason: null });
+    expect(p.steps).toHaveLength(2);
+    expect(p.attempts.map((a) => [a.valid, a.stage])).toEqual([[false, "shadow"], [true, "shadow"]]);
+    // The retry prompt carries the shadow's finding, so the LLM knows what to fix.
+    expect(llm.prompts[1]).toContain("column public.accounts.legacy (integer) exists only on target");
+    // The verifier gets the finalized plan (DriftGuard's own phase/risk), not raw LLM JSON.
+    expect(verify.plans[1]!.steps[1]).toMatchObject({ phase: "contract", reversibility: "data-lossy" });
+    expect(acceptanceNote(p)).toMatch(/AND a passing shadow run/);
+  });
+
+  it("falls back to the rules plan when the shadow run keeps failing", async () => {
+    const valid = plan([{ sql: "ALTER TABLE accounts ADD COLUMN region text" }]);
+    const verify = fakeVerifier({ ok: false, errors: ["e1"] }, { ok: false, errors: ["e2"] });
+    const p = await planMigration({ drift, source, target, llm: fakeLlm(valid, valid), verify });
+    expect(p).toMatchObject({ author: "rules", fellBack: true, acceptedBy: null });
+    expect(p.fallbackReason).toMatch(/2 attempt\(s\); the last one failed the shadow run/);
+  });
+
+  it("does not retry the LLM when the shadow run is unavailable, and does not accept an unproven plan", async () => {
+    const llm = fakeLlm(plan([{ sql: "ALTER TABLE accounts ADD COLUMN region text" }]), plan([{ sql: "unused" }]));
+    const verify = fakeVerifier({ unavailable: "could not start a shadow container (is Docker running?)" });
+    const p = await planMigration({ drift, source, target, llm, verify });
+    expect(llm.calls).toBe(1);
+    expect(p).toMatchObject({ author: "rules", fellBack: true, acceptedBy: null });
+    expect(p.fallbackReason).toMatch(/shadow run unavailable.*is Docker running/);
+    expect(renderPlanSql(p)).toContain("The LLM plan was not used: shadow run unavailable");
+  });
+
+  it("never shadow-runs a plan the validator rejected", async () => {
+    const verify = fakeVerifier();
+    const llm = fakeLlm(plan([{ sql: "TRUNCATE accounts" }]), plan([{ sql: "ALTER TABLE nope ADD COLUMN x int" }]));
+    const p = await planMigration({ drift, source, target, llm, verify });
+    expect(verify.plans).toHaveLength(0);
+    expect(p.attempts.map((a) => a.stage)).toEqual(["validator", "validator"]);
+    expect(p.fallbackReason).toMatch(/failed the validator/);
+  });
+
+  it("caps the feedback sent back to the LLM", async () => {
+    const errors = Array.from({ length: 15 }, (_, i) => `problem ${i} ${"x".repeat(1000)}`);
+    const limited = limitFeedback(errors);
+    expect(limited).toHaveLength(MAX_FEEDBACK_ERRORS + 1);
+    expect(limited.slice(0, -1).every((e) => e.length === MAX_FEEDBACK_CHARS && e.endsWith("..."))).toBe(true);
+    expect(limited.at(-1)).toBe("(5 more problem(s) not shown)");
+    expect(limitFeedback(["short"])).toEqual(["short"]);
+
+    // End to end: the retry prompt holds the capped list, not all 15 kB of errors.
+    const llm = fakeLlm(plan([{ sql: "ALTER TABLE accounts ADD COLUMN region text" }]), "not json");
+    await planMigration({ drift, source, target, llm, verify: fakeVerifier({ ok: false, errors }) });
+    expect(llm.prompts[1]).toContain("problem 9 ");
+    expect(llm.prompts[1]).not.toContain("problem 10 ");
+    expect(llm.prompts[1]!.length - llm.prompts[0]!.length).toBeLessThan(4000);
   });
 
   it("does not call the LLM when there is no drift", async () => {

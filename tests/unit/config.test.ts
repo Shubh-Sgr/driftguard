@@ -32,6 +32,12 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ...valid, DRIFTGUARD_STATEMENT_TIMEOUT_MS: "0" })).toThrow(/DRIFTGUARD_STATEMENT_TIMEOUT_MS/);
   });
 
+  it("shadow-verifies LLM plans by default; DRIFTGUARD_SHADOW_VERIFY=off turns it off", () => {
+    expect(loadConfig(valid).shadowVerify).toBe(true);
+    expect(loadConfig({ ...valid, DRIFTGUARD_SHADOW_VERIFY: "off" }).shadowVerify).toBe(false);
+    expect(() => loadConfig({ ...valid, DRIFTGUARD_SHADOW_VERIFY: "false" })).toThrow(/DRIFTGUARD_SHADOW_VERIFY/);
+  });
+
   it("rejects an unknown LLM provider", () => {
     expect(() => loadConfig({ ...valid, DRIFTGUARD_LLM: "gpt" })).toThrow(/DRIFTGUARD_LLM/);
   });

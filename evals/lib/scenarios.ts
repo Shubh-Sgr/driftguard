@@ -10,6 +10,7 @@ import type { LlmProvider } from "../../src/llm/provider.js";
 import { planMigration } from "../../src/plan/plan.js";
 import type { MigrationPlan } from "../../src/plan/types.js";
 import { shadowRun } from "../../src/shadow/shadow.js";
+import { shadowVerifier } from "../../src/shadow/verifier.js";
 import { quoteIdent } from "../../src/sql/ident.js";
 import { verifyData } from "../../src/verify/verify.js";
 import { createScratchDatabase, dropScratchDatabase, runAsAdmin, TARGET_ADMIN_URL, TARGET_RO_URL, withDatabase } from "./scratch.js";
@@ -24,7 +25,8 @@ interface Expected {
 export interface PlanOutcome {
   author: MigrationPlan["author"];
   fellBack: boolean;
-  attempts: { valid: boolean; errors: string[] }[];
+  acceptedBy: MigrationPlan["acceptedBy"];
+  attempts: { valid: boolean; stage: string; errors: string[] }[];
   steps: number;
   shadow: "pass" | "fail" | "not run";
   shadowFailure?: string;
@@ -92,7 +94,9 @@ export async function runScenarios(dir: string, source: pg.Pool, sourceSchema: S
         result.rulesPlan = await shadowOutcome(rules, targetUrl, sourceSchema);
         if (llm) {
           log(`  asking ${llm.id} for a plan...`);
-          const plan = await planMigration({ drift, source: sourceSchema, target: targetSchema, llm });
+          // Same pipeline as the product: validator, then a shadow run before accepting.
+          const verify = shadowVerifier({ targetUrl, source: sourceSchema });
+          const plan = await planMigration({ drift, source: sourceSchema, target: targetSchema, llm, verify });
           // Only shadow-run plans the LLM actually wrote; fallbacks are the rules plan above.
           result.llmPlan = plan.author === "llm" ? await shadowOutcome(plan, targetUrl, sourceSchema) : { ...summarizePlan(plan), shadow: "not run" };
         }
@@ -134,7 +138,13 @@ async function scoreData(source: pg.Pool, target: pg.Pool, expected: NonNullable
 }
 
 function summarizePlan(plan: MigrationPlan): Omit<PlanOutcome, "shadow"> {
-  return { author: plan.author, fellBack: plan.fellBack, attempts: plan.attempts.map(({ valid, errors }) => ({ valid, errors })), steps: plan.steps.length };
+  return {
+    author: plan.author,
+    fellBack: plan.fellBack,
+    acceptedBy: plan.acceptedBy,
+    attempts: plan.attempts.map(({ valid, stage, errors }) => ({ valid, stage, errors })),
+    steps: plan.steps.length,
+  };
 }
 
 async function shadowOutcome(plan: MigrationPlan, targetUrl: string, source: Schema): Promise<PlanOutcome> {

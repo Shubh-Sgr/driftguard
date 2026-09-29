@@ -109,7 +109,7 @@ export function buildMcpServer(dg: DriftGuard): McpServer {
     {
       title: "Plan a safe migration",
       description:
-        "Build an ordered, safe migration plan that makes TARGET match SOURCE. If an LLM is configured, its plan is checked by a validator (objects exist, only allow-listed statements, no unsafe DDL) and replaced by a deterministic rules-only plan if invalid. Risk and reversibility are computed by DriftGuard. Returns SQL text for a human to review; nothing is executed.",
+        "Build an ordered, safe migration plan that makes TARGET match SOURCE. If an LLM is configured, its plan must pass a validator (objects exist, only allow-listed statements, no unsafe DDL) and then a shadow run: DriftGuard starts a disposable local Postgres container, copies the target's schema (no data) into it, applies the plan as a non-superuser and checks the result matches SOURCE. Otherwise the deterministic rules-only plan is returned. `plan.acceptedBy` and the first lines of `sql` say how the plan was accepted. Risk and reversibility are computed by DriftGuard. The source and target databases are only read; the plan is returned as SQL for a human to review and is never run on them.",
       inputSchema: { useLlm: z.boolean().optional().describe("Set false for a rules-only plan; default uses the configured LLM") },
       annotations: { ...READ_ONLY, idempotentHint: false },
     },
