@@ -80,11 +80,12 @@ flowchart LR
 | F5 | Lock analyzer | [libpg-query](https://github.com/launchql/libpg-query-node) (Postgres' own parser, WASM) → rule table → risk from `reltuples` |
 | F6 | Safe rewrites | `CONCURRENTLY`, `NOT VALID` + `VALIDATE`, `UNIQUE ... USING INDEX`, expand/contract, batched `DO` loops with `COMMIT` per batch |
 | F7 | Guarded LLM planner | zod-checked JSON → validator (parses, allow-list, objects exist, no unsafe DDL) → shadow run (the result must match the source) → one retry with the errors → rules-only fallback |
-| F8 | MCP server | 6 read-only tools over stdio |
+| F8 | MCP server | 7 read-only tools over stdio |
 | F9 | Eval suite | 21 drift/data scenarios, 30 lock statements with ground truth from Postgres, and a stall benchmark under load |
 | F10 | Shadow runs | Copies the target's *schema* into a disposable container, applies the plan, and diffs the result against the source |
 | F11 | Reversibility | Tags each step `reversible` / `reversible-with-backfill` / `data-lossy` and generates rollback SQL |
 | F12 | Receipts | JSON of drift + verification + plan + shadow, with a SHA-256 over canonical (sorted-key) JSON |
+| F13 | Lock-queue preflight | "Safe to run right now?": the locks each statement needs vs. live `pg_locks` + `pg_stat_activity`, using Postgres' full 8×8 lock conflict table |
 
 ## Quickstart (local, zero cost)
 
@@ -119,6 +120,7 @@ DriftGuard was built and measured on an 8 GB MacBook Air (M1). It stays responsi
 npm run cli -- diff                                   # schema drift (exit code 1 if any)
 npm run cli -- verify --rows                          # checksums + exact differing rows
 npm run cli -- locks examples/risky-migration.sql     # lock impact per statement
+npm run cli -- preflight examples/risky-migration.sql # would it have to wait for locks RIGHT NOW?
 npm run cli -- rewrite examples/risky-migration.sql   # safe multi-step script
 npm run cli -- plan --no-llm                          # rules-only plan
 npm run cli -- plan                                   # LLM plan (Ollama) behind guardrails
@@ -128,6 +130,8 @@ npm run cli -- receipt-verify driftguard-receipt.json
 ```
 
 `locks --fail-on high` exits with code 1, so it can gate a CI pipeline on risky migrations.
+
+`preflight` answers a different question: not "what will this lock?" but "is anyone holding or waiting for a conflicting lock right now?". It lists the sessions it would queue behind (pid, user, application, state, transaction age; never their query text), and flags that `CREATE INDEX CONCURRENTLY` waits for every older transaction in the database. It exits with code 1 if the migration would wait. DriftGuard never terminates sessions.
 
 ## Step-by-step: test every feature
 
@@ -174,6 +178,22 @@ npm run cli -- locks examples/risky-migration.sql
 npm run cli -- locks examples/risky-migration.sql --fail-on high; echo "exit code: $?"   # 1 = a CI pipeline would stop here
 ```
 Each statement shows its lock (e.g. `SHARE ... blocks writes`), whether it scans or rewrites the table, and a risk level, plus a warning that `lock_timeout` is missing.
+
+**5b. Is it safe to run right now? (F13)**
+
+Open a second terminal and leave a transaction open, like a forgotten session would:
+
+```bash
+docker exec -it driftguard-target-db-1 psql -U postgres -d fintech
+# then, inside psql:  BEGIN; SELECT count(*) FROM accounts;   (don't COMMIT yet)
+```
+
+Back in the first terminal:
+
+```bash
+npm run cli -- preflight examples/risky-migration.sql
+```
+Expect `WOULD WAIT behind 1 session(s)`: `ALTER TABLE accounts ADD COLUMN` needs ACCESS EXCLUSIVE, and the open session holds ACCESS SHARE on `accounts` (shown with `state=idle in transaction` and its age). The other statements are OK: the FK needs SHARE ROW EXCLUSIVE, which doesn't conflict with a reader. Type `COMMIT;` in psql and run it again: `SAFE NOW`.
 
 **6. Safe rewrite of the same migration (F6)**
 
@@ -252,7 +272,7 @@ Add `--scope project` to store it in the project's `.mcp.json` (shared with your
 ### Step 3: check it's connected
 
 - **Claude Code:** run `claude mcp list` (it should show `driftguard ... ✓ Connected`), or type `/mcp` inside a session. Start a **new** session after adding a server.
-- **Cursor:** Settings → MCP. `driftguard` should show a green dot and 6 tools. Restart Cursor after editing the file.
+- **Cursor:** Settings → MCP. `driftguard` should show a green dot and 7 tools. Restart Cursor after editing the file.
 
 ### Step 4: ask
 
@@ -263,12 +283,13 @@ Add `--scope project` to store it in the project's `.mcp.json` (shared with your
 | "Which exact rows differ in `ledger_entries`?" | `find_differing_rows` (keys and changed columns only) |
 | "Show me the actual values of those rows." | `find_differing_rows` with `includeValues: true` |
 | "What will `ALTER TABLE transactions ALTER COLUMN merchant_id TYPE bigint` lock, and for how long?" | `analyze_locks` |
+| "Is it safe to run `ALTER TABLE accounts ADD COLUMN note text` right now?" | `check_lock_queue` |
 | "Rewrite this migration so it doesn't block production: …" | `suggest_safe_rewrite` |
 | "Plan a safe migration that makes target match source." | `plan_migration` |
 
 A typical agentic flow: *"Check target for drift, explain the risky items, and give me a safe migration plan"*. The assistant calls `detect_drift`, then `plan_migration`, and may run `analyze_locks` on the result.
 
-**Safety:** all 6 tools are read-only (annotated `readOnlyHint: true`). None of them can write to your databases; plans come back as SQL for you to review and run yourself. The one side effect: with an LLM configured, `plan_migration` starts a short-lived local Postgres container for the shadow run and removes it afterwards. Connection strings come from the config above, never from the conversation. Row values are only returned when explicitly asked for.
+**Safety:** all 7 tools are read-only (annotated `readOnlyHint: true`). None of them can write to your databases; plans come back as SQL for you to review and run yourself. The one side effect: with an LLM configured, `plan_migration` starts a short-lived local Postgres container for the shadow run and removes it afterwards. Connection strings come from the config above, never from the conversation. Row values are only returned when explicitly asked for.
 
 ### Troubleshooting
 
@@ -303,6 +324,9 @@ ALTER ROLE driftguard_ro SET default_transaction_read_only = on;
 GRANT CONNECT ON DATABASE your_db TO driftguard_ro;
 GRANT USAGE ON SCHEMA public TO driftguard_ro;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO driftguard_ro;
+-- Optional, for `preflight`: see other sessions' states and transaction ages.
+-- It also lets the role read their query text; DriftGuard never returns or stores it.
+GRANT pg_read_all_stats TO driftguard_ro;
 ```
 
 **3. Point DriftGuard at them** in `.env` (never commit this file):
@@ -369,7 +393,7 @@ npx tsx src/cli/index.ts locks migrations/0042_add_index.sql --offline --fail-on
 ## Development
 
 ```bash
-npm test                  # 123 unit tests, no database needed
+npm test                  # 132 unit tests, no database needed
 npm run test:integration  # needs `npm run db:up` and Docker (shadow runs)
 npm run eval              # all evals → evals/results*.md
 npm run eval -- --only scenarios --llm llama3.2   # include LLM plans (needs Ollama)
