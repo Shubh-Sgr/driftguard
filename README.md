@@ -29,7 +29,7 @@ All numbers come from `npm run eval` against the seeded Docker databases. The fu
 | Lock mode predicted vs lock actually taken (read from `pg_locks`) | **30/30** statements |
 | Table rewrite predicted vs actual rewrite (`pg_class.relfilenode` changed) | **29/29** statements |
 | Rules-only migration plans that pass a shadow run on a real schema copy | **17/17** |
-| LLM plans (local llama3.2) valid after guardrails | Evaluation in progress. In a first trial run llama3.2 (3B) produced invalid plans (unparseable SQL, unsafe DDL); the validator rejected them and DriftGuard fell back to the rules-only plan. Full numbers will land in `evals/results-llm.md`. |
+| LLM plans (local llama3.2, 3B), 17 drift scenarios | **5.9%** valid on first try, **17.6%** after one retry, **82.4%** fell back to the rules plan; **0/3** accepted LLM plans passed the shadow run |
 
 **Application stall during the migration**, measured on the 1M-row table with a probe query every ~10 ms ([evals/results-rewrite.md](evals/results-rewrite.md)):
 
@@ -41,6 +41,8 @@ All numbers come from `npm run eval` against the seeded Docker databases. The fu
 | `SET NOT NULL` | 438 ms | 25 ms | 0.45 s |
 | `ADD COLUMN ... NOT NULL DEFAULT gen_random_uuid()` | 6.68 s | 583 ms | 46.3 s (batched backfill) |
 | `ALTER COLUMN merchant_id TYPE bigint` | 8.90 s | 174 ms | 32.7 s (+4 manual steps) |
+
+**What the LLM numbers show:** a small local model is not reliable at migration planning. That's why DriftGuard never trusts it. The validator rejected 14/17 plans (unparseable SQL, hallucinated or duplicate objects, blocking DDL). The 3 it accepted were *safe but incomplete*, and only the shadow run caught that (e.g. a missing index and a sequence left out when re-creating a dropped table). Deterministic rules plans passed 17/17. Details: [evals/results-llm.md](evals/results-llm.md).
 
 The trade-off is visible: the rewrites that need a backfill take much longer in total, but the application keeps running.
 These are single runs on a laptop (Apple M1, 8 cores, Docker Desktop). Expect the absolute numbers to vary; the gap is the point.
@@ -190,6 +192,7 @@ Docker instead of Node: `docker run -i --rm -e SOURCE_DATABASE_URL=... -e TARGET
 - Replication-aware verification: compare both sides at a known LSN.
 - A GitHub Action that comments lock analysis on migration pull requests.
 - Automatic re-creation of indexes/FKs in the type-change rewrite.
+- Make a passing shadow run part of accepting an LLM plan (today the validator proves a plan safe, not complete).
 - Signed receipts (Ed25519) in addition to the SHA-256 integrity hash.
 - Hosted demo on free tiers (Neon branches for shadow runs).
 

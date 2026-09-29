@@ -217,7 +217,8 @@ Every generated script starts with `SET lock_timeout` and `SET statement_timeout
 - The deterministic **rules-only plan** is: drift → plain DDL (`desired.ts`) → F6 rewrites. It's the fallback, and it's also used without an LLM (`--no-llm`, or `DRIFTGUARD_LLM=none`).
 - **Validator** (`validate.ts`): (1) every step parses; (2) allow-list: CREATE/ALTER TABLE, CREATE/DROP INDEX, DROP TABLE, UPDATE **with WHERE**, CREATE/ALTER SEQUENCE, SET lock/statement_timeout. `DO` blocks are rejected because their body is opaque PL/pgSQL; BEGIN/COMMIT, DELETE and TRUNCATE are rejected too. (3) A small "world" model of the target, updated as steps are applied, so step 5 may use a column step 2 adds, but a typo'd table or column fails. (4) Any statement for which F6 has a safe rewrite is rejected as unsafe.
 - Loop: attempt 1, then a retry with the exact validator errors in the prompt, then fallback. An unreachable LLM also falls back, and never crashes.
-- **Measured:** full eval still running. In a first trial run llama3.2 (3B, local) failed validation on both attempts (SQL that didn't parse, re-creating existing objects, plain `CREATE INDEX` / `SET NOT NULL`), so DriftGuard fell back to the rules plan. That's the guardrail doing its job. Fill in the real rates from `evals/results-llm.md` once it finishes.
+- **Measured (llama3.2 3B, local, 17 drift scenarios, single run):** 5.9% valid on first try, 17.6% after one retry, 82.4% fell back to the rules plan. The 3 accepted LLM plans all **failed the shadow run** (0/3): they were safe but incomplete (e.g. re-created a dropped table without its index and identity sequence). Rules-only plans: 17/17 pass.
+- *So is the LLM useless here?* — A 3B model on a laptop is, for planning. The point of the design is that it doesn't matter: the validator stopped every unsafe plan, and the shadow run caught every incomplete one. Lesson learned: "valid" (safe) is not "correct" (complete). The next step is to require a passing shadow run before accepting an LLM plan. A bigger model would likely score higher; I haven't measured one.
 
 ---
 
@@ -332,6 +333,6 @@ Postgres locking internals, that "instant" DDL can still cause outages via the l
 | Eval scenarios | [N] |
 | Drift detection precision / recall | [X]% / [Y]% |
 | Lock prediction accuracy | [X]% |
-| LLM plan validity (before fallback) | [X]% |
+| LLM plan validity (before fallback) | 5.9% first try / 17.6% after retry (llama3.2 3B); 0/3 accepted plans passed shadow |
 | Bisection: rows fetched vs full diff on 1M-row table | [X] vs 1,000,000 |
 | Test count | [N] |
