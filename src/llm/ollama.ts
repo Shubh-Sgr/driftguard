@@ -27,7 +27,9 @@ export class OllamaProvider implements LlmProvider {
           // Structured output: Ollama constrains generation to this JSON schema.
           format: jsonSchema,
           // temperature 0 + fixed seed = as reproducible as the model allows.
-          options: { temperature: 0, seed: 42 },
+          // num_ctx: Ollama's default context (often 4096 tokens) silently truncates
+          // our prompt (rules + table facts); num_predict caps runaway output.
+          options: { temperature: 0, seed: 42, num_ctx: 16_384, num_predict: 2_048 },
           messages: [
             { role: "system", content: system },
             { role: "user", content: prompt },
