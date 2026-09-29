@@ -152,3 +152,16 @@ describe("isWideningTypeChange", () => {
     expect(isWideningTypeChange(from, to)).toBe(expected);
   });
 });
+
+describe("constraint-backed indexes", () => {
+  it("reports a missing UNIQUE constraint once, not also as a missing index", () => {
+    const s = schema(table("c", [col("email", "text")], {
+      indexes: { c_email_key: { name: "c_email_key", definition: "CREATE UNIQUE INDEX c_email_key ON public.c USING btree (email)", unique: true, primary: false, valid: true } },
+      constraints: { c_email_key: { name: "c_email_key", type: "unique", definition: "UNIQUE (email)", validated: true } },
+    }));
+    const t = clone(s);
+    t.tables["public.c"]!.indexes = {};
+    t.tables["public.c"]!.constraints = {};
+    expect(diffSchemas(s, t).items.map((i) => i.kind)).toEqual(["constraint_missing"]);
+  });
+});
