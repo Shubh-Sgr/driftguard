@@ -3,7 +3,7 @@
 **An MCP server + CLI that lets AI assistants safely inspect, plan and _prove_ PostgreSQL migrations.**
 The LLM proposes; deterministic code decides.
 
-[![CI](https://github.com/Shubh-Sgr/driftguard/actions/workflows/ci.yml/badge.svg)](https://github.com/Shubh-Sgr/driftguard/actions/workflows/ci.yml)
+[![CI](https://github.com/Shubh-Sgr/driftguard/actions/workflows/ci.yml/badge.svg)](https://github.com/Shubh-Sgr/driftguard/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ## The problem
 
@@ -381,4 +381,10 @@ evals/         F9   scenarios/, locks/, lib/, results*.md
 docker/        docker-compose.yml + deterministic seed + read-only role
 ```
 
-MIT licensed.
+## Contributing
+
+DriftGuard is open source and contributions are welcome: bug reports, new lock rules, new eval scenarios and docs. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and ground rules, and [SECURITY.md](SECURITY.md) to report vulnerabilities privately. This project follows a [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## License
+
+[MIT](LICENSE) © 2026 Shubham Sagar. Free to use, modify and distribute.

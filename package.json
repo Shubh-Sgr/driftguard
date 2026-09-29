@@ -37,5 +37,23 @@
     "tsx": "^4.23.15",
     "typescript": "~5.9",
     "vitest": "^3.2.7"
-  }
+  },
+  "author": "Shubham Sagar (https://github.com/Shubh-Sgr)",
+  "homepage": "https://github.com/Shubh-Sgr/driftguard#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Shubh-Sgr/driftguard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Shubh-Sgr/driftguard/issues"
+  },
+  "keywords": [
+    "postgresql",
+    "mcp",
+    "model-context-protocol",
+    "database-migrations",
+    "schema-drift",
+    "zero-downtime",
+    "cli"
+  ]
 }
