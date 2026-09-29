@@ -8,10 +8,11 @@ const valid = {
 
 describe("loadConfig", () => {
   it("parses valid env and applies the default timeout", () => {
-    expect(loadConfig(valid)).toEqual({
+    expect(loadConfig(valid)).toMatchObject({
       sourceUrl: valid.SOURCE_DATABASE_URL,
       targetUrl: valid.TARGET_DATABASE_URL,
       statementTimeoutMs: 30_000,
+      llm: { provider: "ollama", ollamaModel: "llama3.2" },
     });
   });
 
@@ -29,6 +30,10 @@ describe("loadConfig", () => {
 
   it("rejects a zero or negative timeout", () => {
     expect(() => loadConfig({ ...valid, DRIFTGUARD_STATEMENT_TIMEOUT_MS: "0" })).toThrow(/DRIFTGUARD_STATEMENT_TIMEOUT_MS/);
+  });
+
+  it("rejects an unknown LLM provider", () => {
+    expect(() => loadConfig({ ...valid, DRIFTGUARD_LLM: "gpt" })).toThrow(/DRIFTGUARD_LLM/);
   });
 });
 
