@@ -12,8 +12,10 @@ x-postgres: &postgres
     POSTGRES_USER: postgres
     POSTGRES_PASSWORD: postgres
     POSTGRES_DB: fintech
+    # Rows in `transactions` (ledger_entries gets 2x). 1M locally; CI sets 20000.
+    SEED_TRANSACTIONS: ${SEED_TRANSACTIONS:-1000000}
   volumes:
-    # Every *.sql file here runs once, in filename order, on first start.
+    # Every *.sql / *.sh file here runs once, in filename order, on first start.
     - ./seed:/docker-entrypoint-initdb.d:ro
   healthcheck:
     # -h 127.0.0.1 matters: during init the entrypoint runs a temporary server that only

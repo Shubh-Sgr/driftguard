@@ -4,7 +4,7 @@ import { createPool } from "../../src/db.js";
 import { diffSchemas } from "../../src/diff/diff.js";
 import { introspect } from "../../src/introspect/introspect.js";
 import { createScratchDatabase, dropScratchDatabase, runAsAdmin, withDatabase } from "../../evals/lib/scratch.js";
-import { SOURCE_RO_URL, TARGET_ADMIN_URL, TARGET_RO_URL } from "./env.js";
+import { SEED_TRANSACTIONS, SOURCE_RO_URL, TARGET_ADMIN_URL, TARGET_RO_URL } from "./env.js";
 
 const DB = "dg_test_introspect";
 let source: pg.Pool;
@@ -38,7 +38,7 @@ describe("introspect (F1)", () => {
     expect(tx.columns.id!.identity).toBe("by default");
     expect(tx.primaryKey).toEqual(["id"]);
     expect(tx.indexes.transactions_pending_idx!.definition).toMatch(/WHERE \(status = 'pending'::text\)$/);
-    expect(tx.estimatedRows).toBeGreaterThan(900_000);
+    expect(tx.estimatedRows).toBeGreaterThan(0.9 * SEED_TRANSACTIONS);
     expect(s.tables["public.account_limits"]!.primaryKey).toEqual(["account_id", "limit_type"]);
     expect(s.tables["public.fx_rates"]!.primaryKey).toBeNull();
     expect(s.sequences["public.invoice_number_seq"]).toBeDefined();

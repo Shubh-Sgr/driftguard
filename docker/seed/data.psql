@@ -1,4 +1,7 @@
--- Deterministic seed data. Every value is derived from the generate_series counter `i`
+-- Deterministic seed data, run by 02_data.sh with the psql variable :transactions
+-- (SEED_TRANSACTIONS, default 1,000,000; CI uses fewer). This file has a .psql
+-- extension so the Postgres image doesn't also run it directly.
+-- Every value is derived from the generate_series counter `i`
 -- (no random(), no now()), so source-db and target-db end up byte-for-byte identical.
 -- That is what lets F3 checksums start from "everything matches".
 
@@ -48,7 +51,7 @@ SELECT i,
        i % 17 <> 0
 FROM generate_series(1, 15000) AS i;
 
--- ~1M transactions. account_id is computed once in the subquery so `currency`
+-- :transactions rows (1M by default). account_id is computed once in the subquery so `currency`
 -- can match the account's currency (same formula as in accounts above).
 INSERT INTO transactions (id, account_id, merchant_id, amount, currency, kind, status, reference, metadata, created_at)
 SELECT i,
@@ -63,7 +66,7 @@ SELECT i,
             THEN jsonb_build_object('channel', (ARRAY['app', 'web', 'pos'])[1 + (i / 3) % 3], 'retry', i % 2 = 0)
        END,
        timestamptz '2024-01-01 00:00:00+00' + i * interval '30 seconds'
-FROM generate_series(1, 1000000) AS i
+FROM generate_series(1, :transactions) AS i
 CROSS JOIN LATERAL (SELECT 1 + (i::bigint * 31) % 20000 AS acct) AS a;
 
 -- Two ledger rows per transaction: debit the payer, credit a counter-account.

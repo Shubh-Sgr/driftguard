@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { createPool } from "../../src/db.js";
 import { inspectConnection } from "../../src/cli/doctor.js";
-import { SOURCE_ADMIN_URL, SOURCE_RO_URL, TARGET_RO_URL } from "./env.js";
+import { SEED_TRANSACTIONS, SOURCE_ADMIN_URL, SOURCE_RO_URL, TARGET_RO_URL } from "./env.js";
 
 // Postgres SQLSTATE codes we expect to see.
 const READ_ONLY_TRANSACTION = "25006";
@@ -75,7 +75,7 @@ describe("seed", () => {
 
   it("loads the expected volume into source and target identically", async () => {
     const [s, t] = await Promise.all([ro.query(countSql), target.query(countSql)]);
-    expect(s.rows[0]).toEqual({ transactions: "1000000", ledger_entries: "2000000", accounts: "20000" });
+    expect(s.rows[0]).toEqual({ transactions: String(SEED_TRANSACTIONS), ledger_entries: String(2 * SEED_TRANSACTIONS), accounts: "20000" });
     expect(t.rows[0]).toEqual(s.rows[0]);
   });
 
@@ -84,6 +84,6 @@ describe("seed", () => {
       "SELECT reltuples FROM pg_class WHERE oid = 'public.transactions'::regclass",
     );
     // An estimate, so only check it's populated and in the right range.
-    expect(rows[0]!.reltuples).toBeGreaterThan(900_000);
+    expect(rows[0]!.reltuples).toBeGreaterThan(0.9 * SEED_TRANSACTIONS);
   });
 });

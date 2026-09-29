@@ -30,6 +30,10 @@ jobs:
     name: Integration tests + evals (Postgres 16 in Docker)
     runs-on: ubuntu-latest
     needs: unit
+    env:
+      # A small seed keeps CI fast (~seconds instead of minutes). Tests scale their
+      # expectations from this. The 1M-row numbers in the README come from local runs.
+      SEED_TRANSACTIONS: "20000"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -37,11 +41,11 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      # Seeds 1M transactions + 2M ledger entries into both databases (takes a few minutes).
       - run: npm run db:up
       - run: npm run test:integration
-      # Deterministic parts of the eval (no LLM, no timing-sensitive benchmark).
-      - run: npm run eval -- --only scenarios locks --out results-ci
+      # Lock accuracy against real pg_locks. (The scenario suite and the load benchmark use
+      # row ids and timings from the 1M-row seed, so they run locally: npm run eval.)
+      - run: npm run eval -- --only locks --out results-ci
       - uses: actions/upload-artifact@v4
         if: always()
         with:
