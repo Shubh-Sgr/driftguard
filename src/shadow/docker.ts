@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { promisify } from "node:util";
 
@@ -17,9 +17,13 @@ async function docker(args: string[], opts: { env?: NodeJS.ProcessEnv; timeoutMs
 
 export interface ShadowContainer {
   name: string;
-  /** Superuser URL of the throwaway database, reachable from this machine. */
-  url: string;
+  /** URL for a given user, reachable from this machine (127.0.0.1 + the mapped port). */
+  urlFor(user: string, password: string): string;
+  /** Superuser URL: used only to set up the shadow, never to run plan SQL. */
+  superuserUrl: string;
   remove(): Promise<void>;
+  /** Synchronous removal, for signal handlers (async work may not finish on Ctrl-C). */
+  removeSync(): void;
 }
 
 /**
@@ -32,22 +36,36 @@ export async function startShadowContainer(image = "postgres:16-alpine"): Promis
   await docker([
     "run", "-d", "--rm",
     "--name", name,
+    // Lets stray containers be found (docker ps --filter label=driftguard.shadow).
+    "--label", "driftguard.shadow=1",
     "-e", `POSTGRES_PASSWORD=${password}`,
     // Bind to 127.0.0.1 only, on a port Docker picks (no clashes, not exposed on the network).
     "-p", "127.0.0.1::5432",
-    // Schema-only database: it needs very little memory (keeps small laptops responsive).
+    // Resource limits: plan SQL runs in here, so a runaway statement can't starve the laptop.
     "--memory", "256m",
+    "--cpus", "1",
+    "--pids-limit", "256",
     // Lets the container reach databases on the host (needed on Linux; built into Docker Desktop).
     "--add-host", "host.docker.internal:host-gateway",
     image,
   ]);
   const mapping = await docker(["port", name, "5432/tcp"]); // e.g. "127.0.0.1:55012"
   const port = mapping.split("\n")[0]!.split(":").at(-1);
+  const urlFor = (user: string, pw: string) =>
+    `postgres://${encodeURIComponent(user)}:${encodeURIComponent(pw)}@127.0.0.1:${port}/postgres`;
   return {
     name,
-    url: `postgres://postgres:${password}@127.0.0.1:${port}/postgres`,
+    urlFor,
+    superuserUrl: urlFor("postgres", password),
     remove: async () => {
       await docker(["rm", "-f", name]).catch(() => undefined);
+    },
+    removeSync: () => {
+      try {
+        execFileSync("docker", ["rm", "-f", name], { stdio: "ignore", timeout: 15_000 });
+      } catch {
+        // Best effort: the container was started with --rm and a label, so it can be found later.
+      }
     },
   };
 }
