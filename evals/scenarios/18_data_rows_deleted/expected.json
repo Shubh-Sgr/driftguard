@@ -1,0 +1,28 @@
+{
+  "description": "Three rows missing from 2M ledger entries",
+  "drift": [],
+  "data": {
+    "public.ledger_entries": {
+      "rows": [
+        {
+          "kind": "missing_in_target",
+          "key": {
+            "id": "777001"
+          }
+        },
+        {
+          "kind": "missing_in_target",
+          "key": {
+            "id": "777002"
+          }
+        },
+        {
+          "kind": "missing_in_target",
+          "key": {
+            "id": "1999999"
+          }
+        }
+      ]
+    }
+  }
+}

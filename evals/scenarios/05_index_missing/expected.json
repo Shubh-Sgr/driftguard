@@ -1,0 +1,6 @@
+{
+  "description": "Performance index missing",
+  "drift": [
+    "index_missing:public.transactions.transactions_account_created_idx"
+  ]
+}

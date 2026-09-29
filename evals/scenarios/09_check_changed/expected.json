@@ -1,0 +1,6 @@
+{
+  "description": "CHECK constraint allows an extra value",
+  "drift": [
+    "constraint_changed:public.customers.customers_kyc_status_check"
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "description": "Target server has different TimeZone/DateStyle/float settings; data is identical",
+  "drift": [],
+  "data": {
+    "*": {}
+  }
+}

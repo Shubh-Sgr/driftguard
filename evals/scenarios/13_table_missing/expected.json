@@ -1,0 +1,7 @@
+{
+  "description": "Whole table missing (with its identity sequence)",
+  "drift": [
+    "table_missing:public.audit_log",
+    "sequence_missing:public.audit_log_id_seq"
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "description": "Changes in a composite-PK table and in a table without a PK",
+  "drift": [],
+  "data": {
+    "public.account_limits": {
+      "rows": [
+        {
+          "kind": "changed",
+          "key": {
+            "account_id": "777",
+            "limit_type": "atm_withdrawal"
+          }
+        }
+      ]
+    },
+    "public.fx_rates": {
+      "localized": false
+    }
+  }
+}

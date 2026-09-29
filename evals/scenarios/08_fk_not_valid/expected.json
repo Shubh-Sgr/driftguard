@@ -1,0 +1,6 @@
+{
+  "description": "Foreign key present but NOT VALID",
+  "drift": [
+    "constraint_changed:public.ledger_entries.ledger_entries_transaction_id_fkey"
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "description": "Partial-index predicate changed",
+  "drift": [
+    "index_changed:public.transactions.transactions_pending_idx"
+  ]
+}

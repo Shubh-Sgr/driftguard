@@ -1,0 +1,6 @@
+{
+  "description": "Sequence increment changed",
+  "drift": [
+    "sequence_changed:public.invoice_number_seq.increment"
+  ]
+}

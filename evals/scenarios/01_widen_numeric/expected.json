@@ -1,0 +1,6 @@
+{
+  "description": "Widening type change (numeric(12,2) -> numeric(16,2))",
+  "drift": [
+    "column_type_changed:public.accounts.balance"
+  ]
+}

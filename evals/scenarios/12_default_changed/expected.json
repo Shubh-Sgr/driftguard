@@ -1,0 +1,6 @@
+{
+  "description": "Column default changed",
+  "drift": [
+    "column_default_changed:public.accounts.status"
+  ]
+}

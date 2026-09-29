@@ -1,0 +1,16 @@
+{
+  "description": "One value changed in 1M transactions (no schema drift)",
+  "drift": [],
+  "data": {
+    "public.transactions": {
+      "rows": [
+        {
+          "kind": "changed",
+          "key": {
+            "id": "543210"
+          }
+        }
+      ]
+    }
+  }
+}
