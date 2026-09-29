@@ -126,15 +126,91 @@ npm run cli -- receipt-verify driftguard-receipt.json
 
 `locks --fail-on high` exits with code 1, so it can gate a CI pipeline on risky migrations.
 
-### Try some drift
+## Step-by-step: test every feature
+
+This walkthrough uses the two demo databases from the Quickstart. You break the target on purpose, then watch each feature find and fix it.
+Run the commands one at a time from the `driftguard` folder. **Want it automatic?** `npm run demo` runs steps 1–9 with pauses and repairs the target at the end.
+
+> macOS: if a command fails with `Operation not permitted` / `EPERM uv_cwd`, give your terminal access to the folder: System Settings → Privacy & Security → Files and Folders → (your terminal) → Documents.
+
+**1. Baseline: everything matches**
 
 ```bash
-docker exec -i driftguard-target-db-1 psql -U postgres -d fintech -c "DROP INDEX transactions_account_created_idx; UPDATE transactions SET amount = amount + 1 WHERE id = 424242;"
-npm run cli -- diff
-npm run cli -- verify --table transactions --rows
+npm run cli -- diff      # "No schema drift: source and target match."
+npm run cli -- verify    # "IDENTICAL": 10 tables, ~3.1M rows compared by hash
 ```
 
-`npm run db:down && npm run db:up` resets everything.
+**2. Break the target** (this plays "someone made a mistake"; DriftGuard itself can't write)
+
+```bash
+docker exec driftguard-target-db-1 psql -U postgres -d fintech -c "DROP INDEX transactions_account_created_idx"
+docker exec driftguard-target-db-1 psql -U postgres -d fintech -c "ALTER TABLE ledger_entries DROP CONSTRAINT ledger_entries_transaction_id_fkey"
+docker exec driftguard-target-db-1 psql -U postgres -d fintech -c "ALTER TABLE customers ADD COLUMN legacy_code int"
+docker exec driftguard-target-db-1 psql -U postgres -d fintech -c "UPDATE transactions SET amount = amount + 1 WHERE id = 424242"
+docker exec driftguard-target-db-1 psql -U postgres -d fintech -c "DELETE FROM ledger_entries WHERE id IN (777001, 777002)"
+```
+
+**3. Schema drift (F1 + F2)**
+
+```bash
+npm run cli -- diff
+```
+Expect 3 items: the missing index (low), the missing foreign key (high), the extra `legacy_code` column (medium). Exit code 1.
+
+**4. Exact differing rows (F3 + F4)**
+
+```bash
+npm run cli -- verify --table transactions ledger_entries --rows
+```
+Expect `changed id=424242 columns: amount`, `missing_in_target id=777001` and `id=777002`, and a `bisection:` line showing ~150 rows fetched out of 3M.
+
+**5. Lock impact of a migration (F5)**
+
+```bash
+npm run cli -- locks examples/risky-migration.sql
+npm run cli -- locks examples/risky-migration.sql --fail-on high; echo "exit code: $?"   # 1 = a CI pipeline would stop here
+```
+Each statement shows its lock (e.g. `SHARE ... blocks writes`), whether it scans or rewrites the table, and a risk level, plus a warning that `lock_timeout` is missing.
+
+**6. Safe rewrite of the same migration (F6)**
+
+```bash
+npm run cli -- rewrite examples/risky-migration.sql
+```
+Expect `SET lock_timeout` first. `CREATE INDEX` becomes `CONCURRENTLY`, the FK gets `NOT VALID` then `VALIDATE`, and the new NOT NULL column gets a batched backfill loop.
+
+**7. Plan the fix (F7 + F11)**
+
+```bash
+npm run cli -- plan --no-llm   # rules-only: each step has risk, reversibility and rollback SQL
+npm run cli -- plan            # optional, ~2 min: the LLM plans (needs Ollama); watch the guardrail reject bad plans
+```
+The data-lossy `DROP COLUMN legacy_code` step is commented out unless you pass `--allow-data-loss`.
+
+**8. Prove the plan on a throwaway copy (F10)**
+
+```bash
+npm run cli -- shadow --no-llm
+```
+Expect `Shadow run: PASS`, every step `applied`, and `the shadow matches the source schema`.
+
+**9. Tamper-evident receipt (F12)**
+
+```bash
+npm run cli -- receipt --no-llm --out receipt.json
+npm run cli -- receipt-verify receipt.json   # "OK: receipt intact"
+```
+Edit any value in `receipt.json` and run `receipt-verify` again: it reports `MODIFIED`.
+
+**10. From an AI assistant (F8):** follow [MCP setup](#mcp-setup) below, then ask *"Use driftguard to find schema drift and the differing rows in ledger_entries."*
+
+**11. Reset**
+
+```bash
+npm run db:down && npm run db:up   # fresh, identical databases again (~3 min)
+```
+
+**Automated tests:** `npm test` (unit, no database) and `npm run test:integration` (needs the databases).
 
 ## MCP setup
 
@@ -162,6 +238,47 @@ Then ask: *"Use driftguard to check whether target has drifted from source, and 
 All tools are annotated `readOnlyHint: true`. None of them can write to a database.
 
 Docker instead of Node: `docker run -i --rm -e SOURCE_DATABASE_URL=... -e TARGET_DATABASE_URL=... ghcr.io/shubh-sgr/driftguard` (defaults to `mcp`).
+
+## Use it on your own databases
+
+The demo data is only for trying it out. To use DriftGuard for real:
+
+**1. Choose the pair of databases.** Which features make sense depends on the pair:
+
+| Situation | Source → Target | Use |
+|---|---|---|
+| Staging vs production (the data is supposed to differ) | staging → prod | `diff`, `plan`, `shadow` (schema only) |
+| Moving a database (cloud move, version upgrade, blue/green) | old → new | `diff` **and** `verify --rows` (the data should be identical) |
+| Replica / CDC pipeline check | primary → replica | `verify --rows` |
+| Reviewing a migration before it runs | (the database it will run on) | `locks`, `rewrite` |
+
+**2. Create a read-only role** on each database (as an admin):
+
+```sql
+CREATE ROLE driftguard_ro LOGIN PASSWORD 'choose-a-strong-password';
+ALTER ROLE driftguard_ro SET default_transaction_read_only = on;
+GRANT CONNECT ON DATABASE your_db TO driftguard_ro;
+GRANT USAGE ON SCHEMA public TO driftguard_ro;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO driftguard_ro;
+```
+
+**3. Point DriftGuard at them** in `.env` (never commit this file):
+
+```bash
+SOURCE_DATABASE_URL=postgres://driftguard_ro:PASSWORD@staging-host:5432/your_db
+TARGET_DATABASE_URL=postgres://driftguard_ro:PASSWORD@prod-host:5432/your_db
+DRIFTGUARD_LLM=none
+```
+
+Then `npm run cli -- doctor` must say `read_only=true` and `write privileges: none` before you run anything else. For huge tables, run `verify` against a read replica.
+
+**4. Gate migrations in CI.** No database is needed with `--offline`:
+
+```bash
+npx tsx src/cli/index.ts locks migrations/0042_add_index.sql --offline --fail-on high
+```
+
+**5. Or run the Docker image** (no Node install): `docker run -i --rm --env-file .env ghcr.io/shubh-sgr/driftguard diff`. Any CLI command works in place of `diff`; with no command it starts the MCP server. `shadow` needs a Docker daemon, so run it from the CLI instead.
 
 ## Safety model
 
