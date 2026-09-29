@@ -21,7 +21,8 @@
     "test:integration": "vitest run tests/integration",
     "db:up": "docker compose -f docker/docker-compose.yml up -d --wait",
     "db:down": "docker compose -f docker/docker-compose.yml down -v",
-    "eval": "tsx evals/run.ts"
+    "eval": "tsx evals/run.ts",
+    "demo": "bash scripts/demo.sh"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.31.0",
