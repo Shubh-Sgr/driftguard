@@ -4,7 +4,7 @@ DriftGuard connects to databases, so security reports are taken seriously.
 
 ## Reporting a vulnerability
 
-Please **do not open a public issue**. Report it privately through GitHub: Security tab → "Report a vulnerability". Or email shubhamsagar9191@gmail.com. Include steps to reproduce and the version or commit.
+Please **do not open a public issue**. Report it privately with a [GitHub security advisory](https://github.com/Shubh-Sgr/driftguard/security/advisories/new) (Security tab → "Report a vulnerability"). Include steps to reproduce and the version or commit.
 
 You can expect an acknowledgement within a few days.
 
