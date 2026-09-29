@@ -28,8 +28,11 @@ export class OllamaProvider implements LlmProvider {
           format: jsonSchema,
           // temperature 0 + fixed seed = as reproducible as the model allows.
           // num_ctx: Ollama's default context (often 4096 tokens) silently truncates
-          // our prompt (rules + table facts); num_predict caps runaway output.
-          options: { temperature: 0, seed: 42, num_ctx: 16_384, num_predict: 2_048 },
+          // our prompt (rules + table facts, ~3-4k tokens); 8192 fits it plus the answer
+          // without the extra memory 16k would cost. num_predict caps runaway output.
+          options: { temperature: 0, seed: 42, num_ctx: 8_192, num_predict: 2_048 },
+          // Unload the model 30 s after the last request instead of keeping ~2.5 GB loaded.
+          keep_alive: "30s",
           messages: [
             { role: "system", content: system },
             { role: "user", content: prompt },

@@ -35,6 +35,8 @@ export async function startShadowContainer(image = "postgres:16-alpine"): Promis
     "-e", `POSTGRES_PASSWORD=${password}`,
     // Bind to 127.0.0.1 only, on a port Docker picks (no clashes, not exposed on the network).
     "-p", "127.0.0.1::5432",
+    // Schema-only database: it needs very little memory (keeps small laptops responsive).
+    "--memory", "256m",
     // Lets the container reach databases on the host (needed on Linux; built into Docker Desktop).
     "--add-host", "host.docker.internal:host-gateway",
     image,
