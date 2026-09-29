@@ -86,6 +86,7 @@ flowchart LR
 | F11 | Reversibility | Tags each step `reversible` / `reversible-with-backfill` / `data-lossy` and generates rollback SQL |
 | F12 | Receipts | JSON of drift + verification + plan + shadow, with a SHA-256 over canonical (sorted-key) JSON |
 | F13 | Lock-queue preflight | "Safe to run right now?": the locks each statement needs vs. live `pg_locks` + `pg_stat_activity`, using Postgres' full 8×8 lock conflict table |
+| F14 | PR review action | `driftguard review --format markdown` + a GitHub Action: lock analysis and safe rewrites of changed migrations as a job summary and one PR comment |
 
 ## Quickstart (local, zero cost)
 
@@ -122,6 +123,7 @@ npm run cli -- verify --rows                          # checksums + exact differ
 npm run cli -- locks examples/risky-migration.sql     # lock impact per statement
 npm run cli -- preflight examples/risky-migration.sql # would it have to wait for locks RIGHT NOW?
 npm run cli -- rewrite examples/risky-migration.sql   # safe multi-step script
+npm run cli -- review --format markdown examples/*.sql # PR-comment report (offline, used by the GitHub Action)
 npm run cli -- plan --no-llm                          # rules-only plan
 npm run cli -- plan                                   # LLM plan (Ollama) behind guardrails
 npm run cli -- shadow                                 # plan, then prove it on a throwaway container
@@ -345,6 +347,30 @@ Then `npm run cli -- doctor` must say `read_only=true` and `write privileges: no
 npx tsx src/cli/index.ts locks migrations/0042_add_index.sql --offline --fail-on high
 ```
 
+**Or review every migration pull request with the GitHub Action.** It analyzes the migration files a PR adds or changes (offline: no database, no secrets), writes the lock analysis and the suggested safe rewrite to the job summary, and posts one PR comment that it updates on later pushes:
+
+```yaml
+# .github/workflows/migration-review.yml
+name: Migration review
+on:
+  pull_request:            # never pull_request_target: PR code must not get a write token
+    paths: ["migrations/**/*.sql"]
+permissions:
+  contents: read
+  pull-requests: write     # only for the comment; fork PRs get read-only and just the summary
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Shubh-Sgr/driftguard@main   # pin a commit SHA in production
+        with:
+          paths: migrations/**/*.sql     # one glob per line
+          fail-on: high                  # optional: fail the check at this risk
+```
+
+Or run the same report locally: `npm run cli -- review --format markdown migrations/*.sql`. Untrusted text from the PR (file names, identifiers) is escaped, SQL goes inside a code fence longer than any backtick run in it, and the comment is capped below GitHub's size limit. This repo runs the action on itself for PRs that touch `examples/**/*.sql` ([migration-review.yml](.github/workflows/migration-review.yml)).
+
 **5. Or run it with Docker** (no Node install): build once with `docker build -t driftguard .`, then `docker run -i --rm --env-file .env driftguard diff`. Any CLI command works in place of `diff`; with no command it starts the MCP server. `shadow` needs a Docker daemon, so run it from the CLI instead.
 
 ## Safety model
@@ -385,7 +411,6 @@ npx tsx src/cli/index.ts locks migrations/0042_add_index.sql --offline --fail-on
 
 - MySQL support.
 - Replication-aware verification: compare both sides at a known LSN.
-- A GitHub Action that comments lock analysis on migration pull requests.
 - Automatic re-creation of indexes/FKs in the type-change rewrite.
 - Signed receipts (Ed25519) in addition to the SHA-256 integrity hash.
 - Hosted demo on free tiers (Neon branches for shadow runs).
@@ -393,7 +418,7 @@ npx tsx src/cli/index.ts locks migrations/0042_add_index.sql --offline --fail-on
 ## Development
 
 ```bash
-npm test                  # 132 unit tests, no database needed
+npm test                  # 140 unit tests, no database needed
 npm run test:integration  # needs `npm run db:up` and Docker (shadow runs)
 npm run eval              # all evals → evals/results*.md
 npm run eval -- --only scenarios --llm llama3.2   # include LLM plans (needs Ollama)
