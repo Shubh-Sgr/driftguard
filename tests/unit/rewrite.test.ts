@@ -37,6 +37,13 @@ describe("safe-rewrite engine (F6)", () => {
     ]);
   });
 
+  it("doesn't reuse an existing constraint name for an unnamed constraint (like Postgres: _fkey1)", async () => {
+    const taken = structuredClone(db);
+    taken.tables["public.transactions"]!.constraints.transactions_merchant_id_fkey = { name: "transactions_merchant_id_fkey", type: "foreign_key", definition: "FOREIGN KEY (merchant_id) REFERENCES accounts(id)", validated: true };
+    const [s] = (await rewriteMigration("ALTER TABLE transactions ADD FOREIGN KEY (merchant_id) REFERENCES accounts (id)", { schema: taken })).statements;
+    expect(s!.steps[1]!.sql).toBe("ALTER TABLE transactions VALIDATE CONSTRAINT transactions_merchant_id_fkey1");
+  });
+
   it("CHECK -> NOT VALID + VALIDATE", async () => {
     const [s] = (await rewrite("ALTER TABLE transactions ADD CONSTRAINT positive CHECK (amount > 0)")).statements;
     expect(s!.steps.map((x) => x.sql)).toEqual([

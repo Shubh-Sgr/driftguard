@@ -199,7 +199,7 @@ Docker instead of Node: `docker run -i --rm -e SOURCE_DATABASE_URL=... -e TARGET
 ## Development
 
 ```bash
-npm test                  # 111 unit tests, no database needed
+npm test                  # 112 unit tests, no database needed
 npm run test:integration  # needs `npm run db:up`
 npm run eval              # all evals → evals/results*.md
 npm run eval -- --only scenarios --llm llama3.2   # include LLM plans (needs Ollama)
