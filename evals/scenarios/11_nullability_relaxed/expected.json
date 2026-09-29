@@ -1,0 +1,6 @@
+{
+  "description": "NOT NULL dropped on target",
+  "drift": [
+    "column_nullability_changed:public.accounts.status"
+  ]
+}

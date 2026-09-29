@@ -1,0 +1,6 @@
+{
+  "description": "UNIQUE constraint missing (and its index)",
+  "drift": [
+    "constraint_missing:public.customers.customers_email_key"
+  ]
+}

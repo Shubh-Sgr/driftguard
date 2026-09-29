@@ -1,0 +1,7 @@
+{
+  "description": "Column renamed (looks like drop + add)",
+  "drift": [
+    "column_missing:public.merchants.mcc",
+    "column_extra:public.merchants.category_code"
+  ]
+}

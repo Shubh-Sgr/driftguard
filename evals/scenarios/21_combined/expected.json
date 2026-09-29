@@ -1,0 +1,10 @@
+{
+  "description": "Several kinds of drift at once",
+  "drift": [
+    "index_missing:public.cards.cards_account_id_idx",
+    "column_extra:public.customers.nickname",
+    "column_type_changed:public.accounts.balance",
+    "constraint_missing:public.ledger_entries.ledger_entries_account_id_fkey",
+    "table_extra:public.import_staging"
+  ]
+}

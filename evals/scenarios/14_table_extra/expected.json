@@ -1,0 +1,6 @@
+{
+  "description": "Unexpected extra table on target",
+  "drift": [
+    "table_extra:public.tmp_backfill"
+  ]
+}

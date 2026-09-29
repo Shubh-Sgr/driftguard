@@ -1,0 +1,122 @@
+[
+  {
+    "sql": "SELECT count(*) FROM transactions WHERE id < 1000",
+    "table": "transactions"
+  },
+  {
+    "sql": "UPDATE accounts SET balance = balance WHERE id = 1",
+    "table": "accounts"
+  },
+  {
+    "sql": "CREATE INDEX eval_i1 ON transactions (amount)",
+    "table": "transactions"
+  },
+  {
+    "sql": "CREATE UNIQUE INDEX eval_i2 ON customers (lower(email))",
+    "table": "customers"
+  },
+  {
+    "sql": "CREATE INDEX CONCURRENTLY eval_i3 ON cards (last4)",
+    "table": "cards"
+  },
+  {
+    "sql": "ALTER TABLE accounts ADD COLUMN note text",
+    "table": "accounts"
+  },
+  {
+    "sql": "ALTER TABLE accounts ADD COLUMN flag boolean NOT NULL DEFAULT false",
+    "table": "accounts"
+  },
+  {
+    "sql": "ALTER TABLE accounts ADD COLUMN ref uuid DEFAULT gen_random_uuid()",
+    "table": "accounts"
+  },
+  {
+    "sql": "ALTER TABLE merchants ADD COLUMN seq bigserial",
+    "table": "merchants"
+  },
+  {
+    "sql": "ALTER TABLE accounts ALTER COLUMN balance TYPE numeric(16,2)",
+    "table": "accounts"
+  },
+  {
+    "sql": "ALTER TABLE transactions ALTER COLUMN merchant_id TYPE bigint",
+    "table": "transactions"
+  },
+  {
+    "sql": "ALTER TABLE customers ALTER COLUMN email TYPE varchar(320)",
+    "table": "customers"
+  },
+  {
+    "sql": "ALTER TABLE merchants ALTER COLUMN name TYPE varchar(100)",
+    "table": "merchants"
+  },
+  {
+    "sql": "ALTER TABLE merchants ALTER COLUMN region SET NOT NULL",
+    "table": "merchants"
+  },
+  {
+    "sql": "ALTER TABLE merchants ALTER COLUMN region DROP DEFAULT",
+    "table": "merchants"
+  },
+  {
+    "sql": "ALTER TABLE accounts ALTER COLUMN status SET DEFAULT 'x'",
+    "table": "accounts"
+  },
+  {
+    "sql": "ALTER TABLE ledger_entries ADD CONSTRAINT eval_fk FOREIGN KEY (account_id) REFERENCES accounts (id)",
+    "table": "ledger_entries"
+  },
+  {
+    "sql": "ALTER TABLE ledger_entries ADD CONSTRAINT eval_fk2 FOREIGN KEY (account_id) REFERENCES accounts (id) NOT VALID",
+    "table": "ledger_entries"
+  },
+  {
+    "sql": "ALTER TABLE transactions ADD CONSTRAINT eval_chk CHECK (amount > 0)",
+    "table": "transactions"
+  },
+  {
+    "sql": "ALTER TABLE transactions ADD CONSTRAINT eval_chk2 CHECK (amount > 0) NOT VALID",
+    "table": "transactions"
+  },
+  {
+    "sql": "ALTER TABLE cards VALIDATE CONSTRAINT cards_last4_len",
+    "table": "cards"
+  },
+  {
+    "sql": "ALTER TABLE customers ADD CONSTRAINT eval_uq UNIQUE (email, country)",
+    "table": "customers"
+  },
+  {
+    "sql": "ALTER TABLE cards DROP COLUMN is_active",
+    "table": "cards"
+  },
+  {
+    "sql": "ALTER TABLE merchants RENAME COLUMN mcc TO category",
+    "table": "merchants"
+  },
+  {
+    "sql": "DROP INDEX cards_account_id_idx",
+    "table": "cards"
+  },
+  {
+    "sql": "DROP INDEX CONCURRENTLY accounts_customer_id_idx",
+    "table": "accounts"
+  },
+  {
+    "sql": "TRUNCATE audit_log",
+    "table": "audit_log"
+  },
+  {
+    "sql": "VACUUM FULL merchants",
+    "table": "merchants"
+  },
+  {
+    "sql": "CLUSTER merchants USING merchants_pkey",
+    "table": "merchants"
+  },
+  {
+    "sql": "REINDEX INDEX merchants_pkey",
+    "table": "merchants"
+  }
+]

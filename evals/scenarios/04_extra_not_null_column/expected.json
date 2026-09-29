@@ -1,0 +1,6 @@
+{
+  "description": "Extra NOT NULL column on target",
+  "drift": [
+    "column_extra:public.customers.risk_score"
+  ]
+}

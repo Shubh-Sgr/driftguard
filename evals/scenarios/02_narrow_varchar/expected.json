@@ -1,0 +1,6 @@
+{
+  "description": "Narrowing type change (text -> varchar(50))",
+  "drift": [
+    "column_type_changed:public.merchants.name"
+  ]
+}

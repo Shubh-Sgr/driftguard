@@ -1,0 +1,6 @@
+{
+  "description": "Foreign key missing",
+  "drift": [
+    "constraint_missing:public.ledger_entries.ledger_entries_transaction_id_fkey"
+  ]
+}

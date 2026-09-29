@@ -1,0 +1,6 @@
+{
+  "description": "Column dropped on target",
+  "drift": [
+    "column_missing:public.cards.is_active"
+  ]
+}
