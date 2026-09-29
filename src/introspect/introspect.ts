@@ -89,7 +89,7 @@ const CONSTRAINT_TYPES: Record<string, ConstraintType> = {
 const IDENTITY: Record<string, "always" | "by default" | null> = { a: "always", d: "by default", "": null };
 
 /** Reads the structure of the given schemas into a typed, JSON-friendly Schema. */
-export async function introspect(db: pg.Pool | pg.PoolClient, schemas: string[] = ["public"]): Promise<Schema> {
+export async function introspect(db: pg.Pool | pg.PoolClient | pg.Client, schemas: string[] = ["public"]): Promise<Schema> {
   // Sequential on purpose: these are five small catalog queries, and `db` may be a
   // single client inside a snapshot transaction, which can only run one query at a time.
   const tables = await db.query(TABLES_SQL, [schemas]);
