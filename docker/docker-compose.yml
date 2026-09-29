@@ -19,9 +19,12 @@ x-postgres: &postgres
     # -h 127.0.0.1 matters: during init the entrypoint runs a temporary server that only
     # listens on the Unix socket. Checking TCP means "healthy" = seed finished + real server up.
     test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "fintech"]
-    interval: 2s
+    interval: 3s
     timeout: 3s
-    retries: 90
+    retries: 5
+    # Seeding 3M rows can take several minutes (longer on shared CI runners). Failed
+    # checks during start_period don't count, so a slow seed isn't marked "unhealthy".
+    start_period: 15m
 
 services:
   source-db:
