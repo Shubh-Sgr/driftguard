@@ -23,6 +23,7 @@
     "db:down": "docker compose -f docker/docker-compose.yml down -v"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "commander": "^13.1.0",
     "libpg-query": "^18.1.5",
     "pg": "^8.23.0",
