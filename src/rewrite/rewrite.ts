@@ -185,7 +185,7 @@ function alterTableRule(stmt: ParsedStatement, cmd: AstNode, a: StatementAnalysi
       const c = cmd.def.Constraint;
       if ((c.contype === "CONSTR_FOREIGN" || c.contype === "CONSTR_CHECK") && !c.skip_validation) {
         const isFk = c.contype === "CONSTR_FOREIGN";
-        const name: string = c.conname ?? constraintName(key.split(".")[1]!, ...(isFk ? stringList(c.fk_attrs) : []), isFk ? "fkey" : "check");
+        const name: string = c.conname ?? freeName(ctx, key, constraintName(key.split(".")[1]!, ...(isFk ? stringList(c.fk_attrs) : []), isFk ? "fkey" : "check"));
         // Name it explicitly if the user didn't, so the VALIDATE step can refer to it.
         const text = c.conname ? stmt.text : stmt.text.replace(/\bADD\s+(FOREIGN\s+KEY|CHECK)\b/i, (_m, what) => `ADD CONSTRAINT ${ident(name)} ${what}`);
         return {
@@ -200,7 +200,7 @@ function alterTableRule(stmt: ParsedStatement, cmd: AstNode, a: StatementAnalysi
       if ((c.contype === "CONSTR_UNIQUE" || c.contype === "CONSTR_PRIMARY") && !c.indexname) {
         const primary = c.contype === "CONSTR_PRIMARY";
         const keys = stringList(c.keys);
-        const name: string = c.conname ?? constraintName(key.split(".")[1]!, ...(primary ? [] : keys), primary ? "pkey" : "key");
+        const name: string = c.conname ?? freeName(ctx, key, constraintName(key.split(".")[1]!, ...(primary ? [] : keys), primary ? "pkey" : "key"));
         return {
           rule: "unique_using_index",
           steps: [
@@ -328,6 +328,18 @@ function renameColumnRule(key: string, from: string, to: string, ctx: Ctx): Rule
     ],
     explanation: "A rename is instant, but every running instance of the app still uses the old name and breaks at that moment. Expand/contract keeps both names working during the deploy.",
   };
+}
+
+/**
+ * A name for an unnamed constraint that doesn't collide with an existing constraint or
+ * index on the target — the same "_fkey1, _fkey2" suffixing Postgres itself uses.
+ */
+function freeName(ctx: Ctx, key: string, base: string): string {
+  const table = ctx.schema?.tables[key];
+  const taken = (n: string) => !!table && (n in table.constraints || Object.values(ctx.schema!.tables).some((t) => n in t.indexes));
+  let name = base;
+  for (let i = 1; taken(name); i++) name = `${base}${i}`;
+  return name;
 }
 
 /** The four-step, non-blocking way to make a column NOT NULL (PG 12+). */
