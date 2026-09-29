@@ -3,10 +3,14 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPool } from "../../src/db.js";
 import { verifyData } from "../../src/verify/verify.js";
 import { createScratchDatabase, dropScratchDatabase, runAsAdmin, withDatabase } from "../../evals/lib/scratch.js";
-import { SOURCE_RO_URL, TARGET_ADMIN_URL, TARGET_RO_URL } from "./env.js";
+import { SEED_TRANSACTIONS, SOURCE_RO_URL, TARGET_ADMIN_URL, TARGET_RO_URL } from "./env.js";
 
-// A scratch copy of the target with a few known data differences.
+// A scratch copy of the target with a few known data differences. Row ids scale with
+// the seed (543210 and 1500001 at the default 1M), so the test works for small CI seeds.
 const DB = "dg_test_verify";
+const N = SEED_TRANSACTIONS;
+const CHANGED_TX = Math.floor(N * 0.54321);
+const MISSING_LEDGER = [Math.floor(N * 1.5) + 1, Math.floor(N * 1.5) + 2];
 
 let source: pg.Pool;
 let target: pg.Pool;
@@ -14,8 +18,8 @@ let target: pg.Pool;
 beforeAll(async () => {
   await createScratchDatabase(TARGET_ADMIN_URL, DB);
   await runAsAdmin(TARGET_ADMIN_URL, DB, `
-    UPDATE transactions SET amount = amount + 0.01 WHERE id = 543210;        -- one changed row
-    DELETE FROM ledger_entries WHERE id IN (1500001, 1500002);               -- rows missing on target
+    UPDATE transactions SET amount = amount + 0.01 WHERE id = ${CHANGED_TX};  -- one changed row
+    DELETE FROM ledger_entries WHERE id IN (${MISSING_LEDGER.join(", ")});   -- rows missing on target
     UPDATE account_limits SET amount = 1 WHERE account_id = 777 AND limit_type = 'atm_withdrawal'; -- composite PK
     UPDATE fx_rates SET rate = rate + 0.000001 WHERE base = 'USD' AND quote = 'INR' AND as_of = '2024-03-01'; -- no PK
     -- A different server default must NOT create false mismatches (timestamps are normalized to UTC).
@@ -31,14 +35,14 @@ afterAll(async () => {
 });
 
 describe("verifyData (F3) + bisection (F4)", () => {
-  it("finds the exact changed row in 1M transactions while fetching very few rows", async () => {
+  it("finds the exact changed row among all transactions while fetching very few rows", async () => {
     const report = await verifyData(source, target, { tables: ["transactions"], findRows: true });
     const t = report.tables[0]!;
 
-    expect(t).toMatchObject({ status: "mismatch", sourceRows: 1_000_000, targetRows: 1_000_000, chunks: 100 });
+    expect(t).toMatchObject({ status: "mismatch", sourceRows: N, targetRows: N, chunks: Math.ceil(N / 10_000) });
     expect(t.mismatchedChunks).toHaveLength(1);
     expect(t.differingRows).toEqual([
-      expect.objectContaining({ kind: "changed", key: { id: "543210" }, columns: ["amount"] }),
+      expect.objectContaining({ kind: "changed", key: { id: String(CHANGED_TX) }, columns: ["amount"] }),
     ]);
     const row = t.differingRows![0]!;
     if (row.kind === "changed") expect(Number(row.target.amount) - Number(row.source.amount)).toBeCloseTo(0.01);
@@ -54,8 +58,8 @@ describe("verifyData (F3) + bisection (F4)", () => {
     const t = report.tables[0]!;
     expect(t.targetRows).toBe(t.sourceRows - 2);
     expect(t.differingRows!.map((r) => [r.kind, r.key])).toEqual([
-      ["missing_in_target", { id: "1500001" }],
-      ["missing_in_target", { id: "1500002" }],
+      ["missing_in_target", { id: String(MISSING_LEDGER[0]) }],
+      ["missing_in_target", { id: String(MISSING_LEDGER[1]) }],
     ]);
   });
 

@@ -109,6 +109,7 @@ DriftGuard was built and measured on an 8 GB MacBook Air (M1). It stays responsi
 - Run one heavy thing at a time: `db:up`, integration tests, and evals each create or scan millions of rows.
 - Use `DRIFTGUARD_LLM=none` unless you need the LLM planner. When it's used, Ollama unloads the model 30 s after the last request.
 - Skip `npm run eval -- --llm ...` (~1 hour on a 3B model) unless you want those numbers; the default eval doesn't call an LLM.
+- Want an even lighter setup? Seed fewer rows: `npm run db:down && SEED_TRANSACTIONS=100000 npm run db:up` (seconds instead of ~3 min). CI uses 20,000. The published eval numbers and `npm run eval` need the default 1,000,000.
 
 ### CLI
 
