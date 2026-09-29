@@ -4,6 +4,9 @@ name: driftguard
 
 x-postgres: &postgres
   image: postgres:16-alpine
+  # Sized for an 8 GB laptop: small caches, few connections, a hard memory cap.
+  command: ["postgres", "-c", "shared_buffers=128MB", "-c", "max_connections=40", "-c", "work_mem=8MB", "-c", "maintenance_work_mem=128MB"]
+  mem_limit: 768m
   environment:
     # Local-only superuser, used by the seed scripts and eval setup — never by DriftGuard itself.
     POSTGRES_USER: postgres

@@ -101,6 +101,15 @@ npm run cli -- doctor  # confirms both connections are read-only
 | `source-db` | 5433 | Fintech schema, 10 tables: 1M `transactions`, 2M `ledger_entries`, composite-PK and no-PK tables |
 | `target-db` | 5434 | Identical copy. Eval scenarios create drift in scratch copies of it. |
 
+### Running on an 8 GB laptop
+
+DriftGuard was built and measured on an 8 GB MacBook Air (M1). It stays responsive if you:
+
+- Give Docker Desktop **3 GB** of memory (Settings → Resources). The two databases are capped at 768 MB each in `docker-compose.yml`, and shadow containers at 256 MB.
+- Run one heavy thing at a time: `db:up`, integration tests, and evals each create or scan millions of rows.
+- Use `DRIFTGUARD_LLM=none` unless you need the LLM planner. When it's used, Ollama unloads the model 30 s after the last request.
+- Skip `npm run eval -- --llm ...` (~1 hour on a 3B model) unless you want those numbers; the default eval doesn't call an LLM.
+
 ### CLI
 
 ```bash
