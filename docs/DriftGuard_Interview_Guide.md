@@ -29,8 +29,8 @@ Read this alongside your own code. If an answer here doesn't match what you actu
 `information_schema` is SQL-standard and portable, but it hides PostgreSQL-specific details: index methods (btree/gin), partial index predicates, `NOT VALID` constraints, exact type modifiers. For a Postgres-only safety tool, precision beats portability.
 
 **Likely questions**
-- *How do you avoid false drift from formatting differences?* — I normalize: use `pg_get_*def()` functions that return canonical definitions, compare identifiers case-sensitively only when quoted, and sort objects by name so order doesn't matter.
-- *What about multiple schemas?* — Every object is keyed as `schema.name`; you can include/exclude schemas via config.
+- *How do you avoid false drift from formatting differences?* — I normalize: use `pg_get_*def()` functions that return canonical definitions, compare names exactly as the catalog stores them (Postgres already lower-cases unquoted names), and sort every drift item by a stable key so catalog order doesn't matter.
+- *What about multiple schemas?* — Every object is keyed as `schema.name`; `--schema` (CLI) or `schemas` (MCP) chooses which schemas to compare (default `public`).
 
 ---
 
@@ -45,6 +45,11 @@ Read this alongside your own code. If an answer here doesn't match what you actu
 **Likely questions**
 - *Can it detect renames?* — Not reliably; a rename looks like "drop + add". I flag pairs with identical types as *possible renames* but never assume — a wrong rename guess could cause data loss. (Honest limitation.)
 - *How is severity decided?* — Rules: missing table/column = high; type change = high if narrowing (e.g. `bigint→int`), medium if widening; index difference = low (performance only).
+
+**As built (`src/diff/`):**
+- Severities in code: missing table/column/constraint = high. Extra table = medium. Extra column = medium, or **high** if it's NOT NULL with no default (the app's INSERTs would fail). Type change = medium if widening per an explicit allow-list (`smallint→int→bigint`, `varchar(n)→varchar(m≥n)/text`, `numeric(p,s)→numeric(p2≥p,s)`), otherwise high: unknown counts as risky. Nullability: target stricter = high, looser = medium. Default = medium. Missing index = low, or medium if unique. Constraint that differs only by `NOT VALID` = medium.
+- Indexes that back a constraint (same name: PK/UNIQUE/EXCLUDE) are reported once, as the constraint. Found while building the planner: otherwise one drop showed up as two items.
+- `possible_rename` is emitted only for exactly one missing + one extra column of the same type in a table. It's advisory and not scored in the eval.
 
 ---
 
@@ -75,9 +80,23 @@ Only a 32-character hash per chunk crosses the network, not the rows.
 
 **Likely questions**
 - *Isn't MD5 broken?* — Broken for **security** (deliberate collisions). Here we detect **accidental** differences; accidental MD5 collisions are astronomically unlikely. If needed, swap to SHA-256 via `pgcrypto`'s `digest()`.
-- *What if data is being written during verification?* — Two snapshots taken at different moments can legitimately differ. Run verification during a write freeze/cutover window, or after replication catches up; mismatches in hot chunks are re-checked before being reported.
+- *What if data is being written during verification?* — Two snapshots taken at different moments can legitimately differ. Run verification during a write freeze/cutover window, or after replication catches up; DriftGuard does not yet re-check hot chunks automatically (roadmap), which is why the README says to verify during a freeze.
 - *Tables without a primary key?* — No stable ordering exists, so I fall back to a whole-table aggregate hash and report "cannot localize" — a documented limitation.
 - *Doesn't hashing scan the whole table anyway?* — Yes, the DB scans it once; the win is **network and memory**: we transfer hashes, not millions of rows.
+
+**As built (`src/verify/`) — the real SQL differs slightly from the sketch above:**
+```sql
+SELECT count(*), md5(string_agg(md5(ROW(c1, c2, ...)::text), '' ORDER BY pk))
+FROM t WHERE pk >= $1 AND pk < $2;
+```
+- **Hash of hashes:** `md5` per row, then `md5` of the concatenation. The aggregate grows by 32 bytes per row (≈320 KB per 10k-row chunk) no matter how wide the row is.
+- **`ROW(cols in SOURCE order)`** instead of `t::text`, so a different column order on the target doesn't cause false mismatches.
+- **Chunk boundaries:** every `chunkSize`-th key from `row_number() OVER (ORDER BY pk)` on the source. The first and last chunks are unbounded, so rows that exist only on the target (below the min or above the max key) still land in a chunk.
+- **Keys travel as text** (`pk::text`) and go back as parameters that Postgres casts, so no precision is lost in JS (bigint > 2^53, microsecond timestamps).
+- Session normalization also sets `IntervalStyle` and `bytea_output`, all with `SET LOCAL` inside the `REPEATABLE READ READ ONLY` transaction.
+- **No primary key:** multiset hash, `md5(string_agg(h ORDER BY h))` over per-row hashes. It's deterministic without a key, but can't localize.
+- Tables whose columns or PK differ are **skipped with a reason** rather than guessed at: fix schema drift first.
+- Measured: all 10 tables (3.14M rows) verified in ~21 s on an M1 laptop. An eval scenario that changes the target's `TimeZone`, `DateStyle` and `extra_float_digits` produced **0 false mismatches**.
 
 ---
 
@@ -95,8 +114,11 @@ Only a 32-character hash per chunk crosses the network, not the rows.
 **Why it's interesting:** It's the same idea as Merkle trees used in Git, Cassandra anti-entropy repair, and blockchains — compare hashes of halves, descend only where they differ.
 
 **Likely questions**
-- *What if many rows differ?* — Bisection degrades gracefully: many branches mismatch, and at worst it approaches a full row diff. I cap recursion and report "widespread mismatch" when more than X% of leaves differ.
+- *What if many rows differ?* — Bisection degrades gracefully: many branches mismatch, and at worst it approaches a full row diff. I stop after `maxRows` differing rows (default 1,000) and mark the result `truncated` ("widespread mismatch").
 - *Total DB work?* — Scans sum to ~2N rows (N + N/2 + N/4 …) per mismatched chunk, but only on the mismatched chunks.
+
+**As built (`src/verify/bisect.ts`):** split each range at its **median key** (`ORDER BY pk OFFSET n/2 LIMIT 1` on whichever side has more rows), so halves are balanced even with sparse keys. Leaves hold ≤ 50 rows. Values are compared as `ARRAY[col::text, ...]`, which has no 100-argument limit, unlike `json_build_object`. Stats are recorded per run: hash rounds, rows fetched, depth.
+**Measured:** across the eval scenarios, all seeded row changes were found (100%, 0 false rows) by fetching **311 rows**, while the mismatched tables held **6,079,997** rows (both sides). One changed row in 1M transactions reaches depth ≥ 7 (≈ log2(10000/50)).
 
 ---
 
@@ -128,8 +150,16 @@ Only a 32-character hash per chunk crosses the network, not the rows.
 **Row estimates are estimates.** `reltuples` is only filled in after `ANALYZE` (it's `-1` before that), and `pg_stat_user_tables.n_live_tup` can be stale. On a fresh seed I saw `n_live_tup = 100000` for a table with exactly 50,000 rows. That's why the seed runs `ANALYZE`, and why F5 (not built yet) will use them only to pick a size bucket, never as exact counts.
 
 **Likely questions**
-- *How accurate is it?* — Lock levels are deterministic from Postgres docs; duration is an estimate from table size. My eval measured [X]% correct lock predictions across [N] statements.
+- *How accurate is it?* — Lock levels are deterministic from Postgres docs; duration is an estimate from table size. My eval ran 30 statements on a copy of the database and read the lock each one ACTUALLY took from `pg_locks`: 30/30 predicted modes matched. Rewrites were checked the same way via `pg_class.relfilenode`: 29/29.
 - *Why not just run it on staging?* — Staging rarely has production-sized data or concurrent traffic; locks that are harmless there cause outages in production.
+
+**As built (`src/locks/`):**
+- Parser: **libpg-query**, the real Postgres 18 parser compiled to WebAssembly, so there's no native build. AST `location`s are **byte** offsets, so text is sliced from a UTF-8 buffer.
+- Risk buckets from `reltuples` (an estimate; -1 before ANALYZE counts as "unknown", which is treated as high, never low): small < 100k, medium < 10M, large ≥ 10M. Doesn't block reads/writes = low. Blocks but metadata-only = medium, or **low if `SET lock_timeout` came earlier in the script**. Blocks while scanning/rewriting = medium/high/critical by size. Data loss = at least high.
+- Script-level warnings: no `lock_timeout` before the first blocking statement, `CONCURRENTLY` inside `BEGIN`, several ACCESS EXCLUSIVE statements in one transaction.
+- It tracks `CHECK (col IS NOT NULL)` added `NOT VALID` then `VALIDATE`d **within the same script**, so the later `SET NOT NULL` is correctly predicted not to scan. Without this, the safe rewrite itself looked risky.
+- Binary-compatible type changes (growing a varchar, varchar→text, numeric precision up with the same scale) are recognized as no-rewrite when the current type is known from the target schema.
+- Statements not in the rule table get a note saying so; they're never silently rated safe.
 
 ---
 
@@ -154,6 +184,12 @@ Every generated script starts with `SET lock_timeout` and `SET statement_timeout
 - *How do batched backfills avoid problems?* — `UPDATE ... WHERE id BETWEEN $1 AND $2` in small batches, each its own short transaction, with pauses — avoids long locks, huge WAL spikes, and replication lag.
 - *What's expand/contract?* — First *expand* (add new structures compatible with old and new code), deploy code, then *contract* (remove old structures). Enables zero-downtime changes.
 
+**As built (`src/rewrite/rewrite.ts`) — rules that actually exist:** `create_index_concurrently`, `drop_index_concurrently` (split one per index), `reindex_concurrently`, `foreign_key_not_valid`, `check_not_valid` (names unnamed constraints so `VALIDATE` can refer to them), `unique_using_index` (`CREATE UNIQUE INDEX CONCURRENTLY` + `ADD CONSTRAINT ... USING INDEX`), `add_column_expand`, `set_not_null_via_check`, `alter_type_expand_contract`, `rename_column_expand_contract`, `batched_write` (WHERE-less UPDATE/DELETE), and `table_rewrite_pg_repack` (manual advice).
+- **Batched backfill is runnable:** a `DO` loop over the integer PK that `COMMIT`s after each batch (allowed in `DO` since PG 11), sleeps 50 ms between batches, and is idempotent (`WHERE col IS NULL`), so re-running after a failure resumes. It lifts `statement_timeout` around the loop, because the whole `DO` is one statement.
+- Constant `DEFAULT` on `ADD COLUMN` is left alone: it's instant since PG 11. Only volatile defaults, serials, or `NOT NULL` without a default are rewritten.
+- A bug the shadow eval caught: the type-change rewrite dropped the column's DEFAULT/NOT NULL. It now copies the default, enforces NOT NULL via the CHECK steps, and drops NOT NULL on `col_old` during the swap (the app stops writing it).
+- **Measured under load** (probe query every ~10 ms on the 1M-row table): `CREATE INDEX` stalled the app **901 ms** vs **37 ms** rewritten. `ADD FOREIGN KEY` 612 → 8 ms. `ADD CHECK` 255 → 8 ms. `SET NOT NULL` 438 → 25 ms. Volatile-default `ADD COLUMN` 6.68 s → 583 ms (but 46 s total). `ALTER TYPE` 8.90 s → 174 ms (33 s total, plus manual steps). Single runs on an M1.
+
 ---
 
 ## 7. LLM planner with guardrails (F7) ⭐
@@ -162,7 +198,7 @@ Every generated script starts with `SET lock_timeout` and `SET statement_timeout
 
 **Flow:**
 1. Build a prompt with the DriftReport, lock analysis, and safe-rewrite suggestions (only structured facts — no raw table data).
-2. Ask for **structured output** (JSON matching a zod schema: steps, SQL, rollback SQL, risk, rationale).
+2. Ask for **structured output**: JSON matching a zod schema of `summary` + `steps[{title, sql, rationale}]`. Ollama is given the JSON Schema (from `z.toJSONSchema`) so generation is constrained. Risk, rollback SQL, reversibility and phase are **not** taken from the LLM: DriftGuard computes them from the parsed SQL.
 3. **Validate:**
    - JSON parses and matches the schema?
    - Every table/column referenced exists in the introspected schema? (catches hallucinations)
@@ -177,6 +213,12 @@ Every generated script starts with `SET lock_timeout` and `SET statement_timeout
 - *Temperature?* — 0 for plans, for reproducibility; model name and version are recorded in the eval results.
 - *Why Ollama?* — Free, local, private (schema never leaves your machine), and swappable via a provider interface.
 
+**As built (`src/plan/`):**
+- The deterministic **rules-only plan** is: drift → plain DDL (`desired.ts`) → F6 rewrites. It's the fallback, and it's also used without an LLM (`--no-llm`, or `DRIFTGUARD_LLM=none`).
+- **Validator** (`validate.ts`): (1) every step parses; (2) allow-list: CREATE/ALTER TABLE, CREATE/DROP INDEX, DROP TABLE, UPDATE **with WHERE**, CREATE/ALTER SEQUENCE, SET lock/statement_timeout. `DO` blocks are rejected because their body is opaque PL/pgSQL; BEGIN/COMMIT, DELETE and TRUNCATE are rejected too. (3) A small "world" model of the target, updated as steps are applied, so step 5 may use a column step 2 adds, but a typo'd table or column fails. (4) Any statement for which F6 has a safe rewrite is rejected as unsafe.
+- Loop: attempt 1, then a retry with the exact validator errors in the prompt, then fallback. An unreachable LLM also falls back, and never crashes.
+- **Measured:** LLM_GUIDE_RESULTS
+
 ---
 
 ## 8. MCP server (F8)
@@ -188,7 +230,7 @@ Every generated script starts with `SET lock_timeout` and `SET statement_timeout
 - **Transports:** `stdio` (local process — what DriftGuard uses) or Streamable HTTP (remote).
 - **Primitives:** **tools** (functions the model can call), **resources** (readable data), **prompts** (templates).
 
-**DriftGuard's tools:** `detect_drift`, `verify_data`, `find_differing_rows`, `analyze_locks`, `suggest_safe_rewrite`, `plan_migration`. Each has a JSON Schema (generated from zod) describing its inputs, so the model knows how to call it.
+**DriftGuard's tools:** `detect_drift`, `verify_data`, `find_differing_rows`, `analyze_locks`, `suggest_safe_rewrite`, `plan_migration`. Each has a JSON Schema (generated from zod) describing its inputs, so the model knows how to call it. All six are annotated `readOnlyHint: true`. `shadow` is deliberately CLI-only: it writes (to a throwaway container), so it stays out of the model's reach.
 
 **Security design** (implemented in `docker/seed/00_roles.sql` and `src/db.ts`; proven by `tests/integration/readonly.test.ts`):
 - **Layer 1, the role:** `driftguard_ro` only has `SELECT` (via `ALTER DEFAULT PRIVILEGES`, so tables created later are covered too). The role itself also defaults to `default_transaction_read_only = on`, `statement_timeout = 60s` and `idle_in_transaction_session_timeout = 60s`.
@@ -204,6 +246,8 @@ Every generated script starts with `SET lock_timeout` and `SET statement_timeout
 - *What is "agentic" here?* — The assistant decides which tools to call and in what order (e.g. detect drift → analyze locks → plan → verify), looping on results. DriftGuard provides safe, well-described tools for that loop.
 - *Difference between tool calling and MCP?* — Tool calling is the model capability; MCP is the standard protocol for exposing tools to any model/app.
 
+**As built (`src/mcp/server.ts`):** `find_differing_rows` returns only primary keys + changed column names unless `includeValues: true`. Row values in a fintech DB are PII, and could contain text that looks like instructions. Tool failures come back as MCP tool errors (`isError: true`) the model can read, not crashes. The integration test spawns `driftguard mcp` and talks to it with the official SDK client over stdio, exactly like Claude Code does. The CLI and MCP share one service class (`src/service.ts`), so they can't behave differently.
+
 ---
 
 ## 9. Eval suite (F9)
@@ -214,7 +258,7 @@ Every generated script starts with `SET lock_timeout` and `SET statement_timeout
 - `setup.sql` — applied to the target DB to create a known drift (e.g. change a column type, drop an index, add a NOT NULL column).
 - `expected.json` — the drift items and lock flags that *should* be found.
 
-`npm run eval` resets the DBs, applies each scenario, runs DriftGuard, and reports:
+`npm run eval` makes a fresh scratch copy of the target for each scenario (`CREATE DATABASE ... TEMPLATE fintech STRATEGY FILE_COPY`, seconds instead of a 3-minute re-seed), applies `setup.sql`, runs DriftGuard, and reports:
 - **Drift detection precision / recall**
 - **Lock prediction accuracy**
 - **Plan validity rate** (plans passing the guardrail validator) with the LLM, and fallback rate
@@ -222,7 +266,13 @@ Every generated script starts with `SET lock_timeout` and `SET statement_timeout
 **Likely questions**
 - *Precision vs recall?* — Precision: of what I flagged, how much was real. Recall: of what was real, how much I found.
 - *Aren't seeded scenarios biased?* — Yes; they measure known cases. I include tricky ones (volatile defaults, composite keys, partial indexes) and report the scenario list openly.
-- *LLM results vary run to run?* — Temperature 0, fixed model version, and I run each scenario multiple times and report the average.
+- *LLM results vary run to run?* — Temperature 0 and a fixed seed, and the model name is recorded in the results. Honest caveat: I ran the LLM eval once per scenario (a 3B model on a laptop is slow), so it's a single run, not an average.
+
+**As built (`evals/`) — three kinds of evidence:**
+1. **21 scenarios** (`evals/scenarios/*/setup.sql` + `expected.json`): 16 schema-drift, 3 data-drift, 1 "session settings" false-positive trap, 1 combined. Results: drift **100% precision / 100% recall** (23 TP, 0 FP, 0 FN), data rows 100% found, **17/17 rules-only plans pass the shadow run**.
+2. **Lock accuracy with ground truth from Postgres**, not from my own table: each statement runs inside `BEGIN ... ROLLBACK` and I read `pg_locks` for this backend. Non-transactional statements (`CONCURRENTLY`, `VACUUM FULL`) are observed from a second session that holds only ACCESS SHARE, so the statement takes its early locks and then waits. My first version held ACCESS EXCLUSIVE and so only saw `VACUUM FULL`'s initial ACCESS SHARE; that measurement bug is fixed. **30/30 modes, 29/29 rewrites.**
+3. **Stall benchmark:** the original vs rewritten migration on fresh 1M-row copies while a probe queries the table (numbers in F6 above).
+- *Isn't 100% suspicious?* — Yes, which is why the scenarios and the corpus are public and the lock truth is measured. They're cases I wrote, so they show the tool does what it claims on known shapes, not that it's perfect on unknown ones.
 
 ---
 
@@ -230,12 +280,14 @@ Every generated script starts with `SET lock_timeout` and `SET statement_timeout
 
 **What:** Proves the migration works before touching the real database.
 
-**How:** Create a disposable copy — a Docker Postgres container (local) or a **Neon branch** (online; copy-on-write, instant, free tier) — apply the plan there, then re-run drift detection against the desired schema and checksums on untouched tables.
+**How:** Start a throwaway `postgres:16-alpine` container (random localhost port, random password), copy the target's **schema** into it with the `pg_dump | psql` that ship inside that image (so no local Postgres tools are needed), apply the plan one statement at a time exactly as a human would, then introspect the result and diff it against the source. Neon branches are on the roadmap; not built.
 
 **Why:** "The plan looks right" becomes "the plan was executed and verified." Neon branching makes it cheap because branches share storage until modified.
 
 **Likely question**
 - *Does a shadow run prove production safety?* — It proves correctness of the result, not production timing under load; that's why it's combined with the lock analyzer.
+
+**As built (`src/shadow/`):** schema-only (no data leaves the target), so it proves the resulting **structure**, not timing or data. Each statement runs separately, because `CONCURRENTLY` and `COMMIT`-inside-`DO` fail in a multi-statement (implicit transaction) query. Verdict = no step failed AND the remaining drift only contains items intentionally left: skipped contract steps (extra tables/columns) and manual items (PK changes). ~4–5 s per run. Containers are started with `execFile` (no shell) and removed in a `finally`.
 
 ---
 
@@ -246,6 +298,8 @@ Every generated script starts with `SET lock_timeout` and `SET statement_timeout
 **Receipt:** A JSON document with drift report, plan, lock analysis, and verification results, plus a SHA-256 hash of its canonical (sorted-key) form. It's an audit trail — relevant in fintech, where you must show what changed and that it was verified.
 
 *Is the hash a signature?* — No. It detects accidental or later modification (tamper-evidence) if the hash is stored elsewhere; a real signature (e.g. Ed25519) would add proof of who produced it — a possible extension.
+
+**As built:** `src/reversibility/classify.ts` uses the pre-migration schema to build real rollbacks (old default, old type, old index/constraint definition). Contract (data-lossy) steps are **commented out** in the rendered plan unless `--allow-data-loss`, and skipped in shadow runs. Receipts: `driftguard receipt` writes the file, `driftguard receipt-verify` recomputes the hash. Canonical JSON = keys sorted at every level; `undefined` dropped like `JSON.stringify`.
 
 ---
 
