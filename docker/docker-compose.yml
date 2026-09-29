@@ -31,8 +31,9 @@ x-postgres: &postgres
 services:
   source-db:
     <<: *postgres
-    ports: ["5433:5432"]
+    # 127.0.0.1 only: the demo superuser password is "postgres", so never expose it to the network.
+    ports: ["127.0.0.1:5433:5432"]
 
   target-db:
     <<: *postgres
-    ports: ["5434:5432"]
+    ports: ["127.0.0.1:5434:5432"]
