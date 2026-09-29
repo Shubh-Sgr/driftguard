@@ -411,3 +411,11 @@ function renderScript(statements: StatementRewrite[], lockTimeout: string, state
   }
   return `${lines.join("\n")}\n`;
 }
+
+/**
+ * Would a safe-rewrite rule fire for this statement? Used by the plan validator:
+ * if DriftGuard knows a safer way to do it, a plan that does it the risky way is rejected.
+ */
+export function unsafeRuleFor(stmt: ParsedStatement, a: StatementAnalysis, schema?: Schema): RuleId | null {
+  return applyRules(stmt, a, { schema, batchSize: 10_000, statementTimeout: "30min" })?.rule ?? null;
+}

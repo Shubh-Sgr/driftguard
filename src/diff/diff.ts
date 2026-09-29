@@ -89,8 +89,9 @@ function diffTable(table: string, s: Table, t: Table): DriftItem[] {
   for (const name of union(s.indexes, t.indexes)) {
     const si = s.indexes[name];
     const ti = t.indexes[name];
-    // Primary-key indexes are covered by primary_key_changed / constraint checks.
-    if (si?.primary || ti?.primary) continue;
+    // Indexes that back a constraint (PK, UNIQUE, EXCLUDE — same name) are reported
+    // once, as the constraint; otherwise one change would show up as two drift items.
+    if (s.constraints[name] || t.constraints[name]) continue;
     // A missing UNIQUE index also removes a uniqueness guarantee, so it's worse than a
     // missing performance index.
     if (si && !ti) {
