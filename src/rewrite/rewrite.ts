@@ -234,21 +234,40 @@ function alterTableRule(stmt: ParsedStatement, cmd: AstNode, a: StatementAnalysi
       const col: string = cmd.name;
       const newType = formatTypeName(cmd.def.ColumnDef.typeName);
       const tmp = `${col}_new`;
+      const old = `${col}_old`;
+      // The new column must end up with the old column's DEFAULT and NOT NULL, or the
+      // swap silently changes the schema (found by the shadow-run eval).
+      const current = ctx.schema?.tables[key]?.columns[col];
+      const steps: RewriteStep[] = [
+        { sql: `ALTER TABLE ${t} ADD COLUMN ${ident(tmp)} ${newType}`, transactional: true, kind: "ddl", note: "Expand: instant, nullable, no default." },
+      ];
+      if (current?.default) {
+        steps.push({ sql: `ALTER TABLE ${t} ALTER COLUMN ${ident(tmp)} SET DEFAULT ${current.default}`, transactional: true, kind: "ddl", note: "Same default as the old column, for new rows." });
+      }
+      steps.push(
+        { sql: `-- MANUAL: deploy code (or a trigger) that writes ${col} AND ${tmp} on every INSERT/UPDATE`, transactional: true, kind: "manual" },
+        backfillOrManual(key, `${ident(tmp)} = ${ident(col)}::${newType}`, `${ident(tmp)} IS NULL AND ${ident(col)} IS NOT NULL`, ctx),
+      );
+      if (current && !current.nullable) steps.push(...setNotNullSteps(key, tmp));
+      steps.push(
+        { sql: `-- MANUAL: re-create indexes, constraints and foreign keys that use ${col} on ${tmp} (CONCURRENTLY / NOT VALID) before the swap`, transactional: true, kind: "manual" },
+        { sql: `-- MANUAL: deploy code that reads ${tmp}; verify with: driftguard verify`, transactional: true, kind: "manual" },
+        {
+          sql: [
+            `ALTER TABLE ${t} RENAME COLUMN ${ident(col)} TO ${ident(old)}`,
+            `ALTER TABLE ${t} RENAME COLUMN ${ident(tmp)} TO ${ident(col)}`,
+            // The app stops writing the old column after the swap, so it must accept NULLs.
+            ...(current && !current.nullable ? [`ALTER TABLE ${t} ALTER COLUMN ${ident(old)} DROP NOT NULL`] : []),
+          ].join(";\n"),
+          transactional: true,
+          kind: "ddl",
+          note: "Swap in ONE short transaction (all metadata-only).",
+        },
+        { sql: `-- CONTRACT (data-lossy, run after the app is stable): ALTER TABLE ${t} DROP COLUMN ${ident(old)}`, transactional: true, kind: "manual" },
+      );
       return {
         rule: "alter_type_expand_contract",
-        steps: [
-          { sql: `ALTER TABLE ${t} ADD COLUMN ${ident(tmp)} ${newType}`, transactional: true, kind: "ddl", note: "Expand: instant, nullable, no default." },
-          { sql: `-- MANUAL: deploy code (or a trigger) that writes ${col} AND ${tmp} on every INSERT/UPDATE`, transactional: true, kind: "manual" },
-          backfillOrManual(key, `${ident(tmp)} = ${ident(col)}::${newType}`, `${ident(tmp)} IS NULL AND ${ident(col)} IS NOT NULL`, ctx),
-          { sql: `-- MANUAL: deploy code that reads ${tmp}; verify with: driftguard verify`, transactional: true, kind: "manual" },
-          {
-            sql: `ALTER TABLE ${t} RENAME COLUMN ${ident(col)} TO ${ident(`${col}_old`)};\nALTER TABLE ${t} RENAME COLUMN ${ident(tmp)} TO ${ident(col)}`,
-            transactional: true,
-            kind: "ddl",
-            note: "Swap in ONE short transaction (both renames are instant).",
-          },
-          { sql: `-- CONTRACT (data-lossy, run after the app is stable): ALTER TABLE ${t} DROP COLUMN ${ident(`${col}_old`)}`, transactional: true, kind: "manual" },
-        ],
+        steps,
         explanation: `Changing ${col} to ${newType} rewrites the whole table and every index under ACCESS EXCLUSIVE. Expand/contract adds a new column, backfills it in batches, swaps names in an instant transaction, and drops the old column later.`,
       };
     }

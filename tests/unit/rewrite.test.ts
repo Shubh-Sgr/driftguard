@@ -85,7 +85,17 @@ describe("safe-rewrite engine (F6)", () => {
   it("ALTER COLUMN TYPE with a rewrite -> expand/contract with manual deploy steps", async () => {
     const [s] = (await rewrite("ALTER TABLE transactions ALTER COLUMN merchant_id TYPE bigint")).statements;
     expect(s!.rule).toBe("alter_type_expand_contract");
-    expect(s!.steps.filter((x) => x.kind === "manual")).toHaveLength(3);
+    expect(s!.steps.filter((x) => x.kind === "manual")).toHaveLength(4);
+  });
+
+  it("keeps the old column's DEFAULT and NOT NULL on the new column (regression found by shadow runs)", async () => {
+    const withBalance = structuredClone(db);
+    withBalance.tables["public.transactions"]!.columns.amount = col("amount", "numeric(12,2)", { nullable: false, default: "0" });
+    const [s] = (await rewriteMigration("ALTER TABLE transactions ALTER COLUMN amount TYPE numeric(10,2)", { schema: withBalance })).statements;
+    const sqls = s!.steps.map((x) => x.sql);
+    expect(sqls).toContain("ALTER TABLE transactions ALTER COLUMN amount_new SET DEFAULT 0");
+    expect(sqls).toContain("ALTER TABLE transactions ALTER COLUMN amount_new SET NOT NULL");
+    expect(sqls.find((x) => x.includes("RENAME COLUMN amount TO amount_old"))).toContain("ALTER COLUMN amount_old DROP NOT NULL");
   });
 
   it("leaves binary-compatible type changes alone", async () => {
