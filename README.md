@@ -203,7 +203,7 @@ npm run cli -- receipt-verify receipt.json   # "OK: receipt intact"
 ```
 Edit any value in `receipt.json` and run `receipt-verify` again: it reports `MODIFIED`.
 
-**10. From an AI assistant (F8):** follow [MCP setup](#mcp-setup) below, then ask *"Use driftguard to find schema drift and the differing rows in ledger_entries."*
+**10. From an AI assistant (F8):** follow [Use it from an AI assistant (MCP)](#use-it-from-an-ai-assistant-mcp) below, then ask *"Use driftguard to find schema drift and the differing rows in ledger_entries."*
 
 **11. Reset**
 
@@ -213,32 +213,72 @@ npm run db:down && npm run db:up   # fresh, identical databases again (~3 min)
 
 **Automated tests:** `npm test` (unit, no database) and `npm run test:integration` (needs the databases).
 
-## MCP setup
+## Use it from an AI assistant (MCP)
 
-Build once with `npm run build`, then register the server.
+[MCP](https://modelcontextprotocol.io) (Model Context Protocol) is the standard way AI assistants call external tools. DriftGuard runs as a local MCP server: the assistant (Claude Code, Cursor, …) starts it as a child process and talks to it over stdin/stdout. You then ask questions in plain English, and the assistant decides which DriftGuard tools to call.
 
-**Claude Code**, either from the CLI:
+### Step 1: build it and make sure the databases are up
 
 ```bash
-claude mcp add driftguard -e SOURCE_DATABASE_URL=postgres://driftguard_ro:driftguard_ro_local@localhost:5433/fintech -e TARGET_DATABASE_URL=postgres://driftguard_ro:driftguard_ro_local@localhost:5434/fintech -- node /absolute/path/to/driftguard/dist/cli/index.js mcp
+npm install && npm run build   # creates dist/cli/index.js, the file the assistant will run
+npm run db:up                  # or use your own databases (see "Use it on your own databases")
+npm run cli -- doctor          # both connections must say read_only=true
 ```
 
-or by committing a `.mcp.json` in your project. **Cursor** uses `.cursor/mcp.json`. Both use the same shape; see [examples/mcp.json](examples/mcp.json).
+### Step 2: register the server
 
-Then ask: *"Use driftguard to check whether target has drifted from source, and plan a safe fix."*
+Pick **one** option. Replace `/absolute/path/to/driftguard` with the real folder path (run `pwd` inside it).
 
-| Tool | What it returns |
+**Claude Code (terminal or desktop app).** One command, run in any terminal where the `claude` CLI is installed:
+
+```bash
+claude mcp add driftguard \
+  -e SOURCE_DATABASE_URL=postgres://driftguard_ro:driftguard_ro_local@localhost:5433/fintech \
+  -e TARGET_DATABASE_URL=postgres://driftguard_ro:driftguard_ro_local@localhost:5434/fintech \
+  -e DRIFTGUARD_LLM=none \
+  -- node /absolute/path/to/driftguard/dist/cli/index.js mcp
+```
+
+Add `--scope project` to store it in the project's `.mcp.json` (shared with your team through git) instead of only for you.
+
+**Or a config file.** Works for Claude Code (`.mcp.json` in your project root) and **Cursor** (`.cursor/mcp.json` in the project, or `~/.cursor/mcp.json` for all projects). Copy [examples/mcp.json](examples/mcp.json) there and fix the path.
+
+**Or Docker, no Node needed.** Use [examples/mcp-docker.json](examples/mcp-docker.json). Inside a container `localhost` is the container itself, so the URLs use `host.docker.internal` to reach databases on your machine. The GHCR image is private until the repo owner makes the package public; until then, build it locally (`docker build -t driftguard .`) and use `driftguard` as the image name.
+
+`DRIFTGUARD_LLM=none` means `plan_migration` returns the deterministic rules-only plan. Set `ollama` to let a local model propose plans (they still go through the validator).
+
+### Step 3: check it's connected
+
+- **Claude Code:** run `claude mcp list` (it should show `driftguard ... ✓ Connected`), or type `/mcp` inside a session. Start a **new** session after adding a server.
+- **Cursor:** Settings → MCP. `driftguard` should show a green dot and 6 tools. Restart Cursor after editing the file.
+
+### Step 4: ask
+
+| Ask the assistant | Tool it calls |
 |---|---|
-| `detect_drift` | Every schema difference, with severity |
-| `verify_data` | Per-table checksum status and mismatched key ranges |
-| `find_differing_rows` | Exact rows (keys and changed column names; values only with `includeValues: true`) |
-| `analyze_locks` | Lock, blocking, scan/rewrite and risk for each statement of the SQL you pass |
-| `suggest_safe_rewrite` | A safe script starting with `SET lock_timeout` / `statement_timeout` |
-| `plan_migration` | A validated plan as SQL text for a human to review |
+| "Has the target database drifted from source? Group the differences by severity." | `detect_drift` |
+| "Is the data in source and target identical?" | `verify_data` |
+| "Which exact rows differ in `ledger_entries`?" | `find_differing_rows` (keys and changed columns only) |
+| "Show me the actual values of those rows." | `find_differing_rows` with `includeValues: true` |
+| "What will `ALTER TABLE transactions ALTER COLUMN merchant_id TYPE bigint` lock, and for how long?" | `analyze_locks` |
+| "Rewrite this migration so it doesn't block production: …" | `suggest_safe_rewrite` |
+| "Plan a safe migration that makes target match source." | `plan_migration` |
 
-All tools are annotated `readOnlyHint: true`. None of them can write to a database.
+A typical agentic flow: *"Check target for drift, explain the risky items, and give me a safe migration plan"*. The assistant calls `detect_drift`, then `plan_migration`, and may run `analyze_locks` on the result.
 
-Docker instead of Node: `docker run -i --rm -e SOURCE_DATABASE_URL=... -e TARGET_DATABASE_URL=... ghcr.io/shubh-sgr/driftguard` (defaults to `mcp`).
+**Safety:** all 6 tools are read-only (annotated `readOnlyHint: true`). None of them can write to a database; plans come back as SQL for you to review and run yourself. Connection strings come from the config above, never from the conversation. Row values are only returned when explicitly asked for.
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| Server shows "failed" / not connected | Start it yourself with the same settings: `SOURCE_DATABASE_URL=... TARGET_DATABASE_URL=... node /absolute/path/to/driftguard/dist/cli/index.js mcp`. It should print `driftguard MCP server ... ready on stdio` (then Ctrl-C). A config error names the missing variable. (The server doesn't read `.env`; the variables must come from the MCP config.) |
+| `Cannot find module .../dist/cli/index.js` | Run `npm run build`, and check the path is absolute. |
+| Tools fail with `ECONNREFUSED` / `Connection terminated` | The databases aren't running or are still seeding. Run `npm run db:up` and wait for `Healthy`. |
+| Docker variant can't reach the databases | Use `host.docker.internal` instead of `localhost` in the URLs. |
+| `EPERM` / "Operation not permitted" on macOS | Give the app that launches the server (your terminal / Cursor) access to the folder: System Settings → Privacy & Security → Files and Folders. |
+
+Remove it again with `claude mcp remove driftguard`, or by deleting the entry from the JSON file.
 
 ## Use it on your own databases
 
