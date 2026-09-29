@@ -1,6 +1,7 @@
 import { describeDrift } from "../diff/describe.js";
 import type { DriftReport } from "../diff/types.js";
 import type { MigrationAnalysis } from "../locks/analyze.js";
+import type { PreflightReport, SessionInfo } from "../locks/preflight.js";
 import type { ShadowReport } from "../shadow/shadow.js";
 import type { VerifyReport } from "../verify/verify.js";
 
@@ -62,4 +63,32 @@ export function formatShadow(r: ShadowReport): string {
   for (const i of unexpected) lines.push(`  - ${describeDrift(i)}`);
   if (r.expectedRemaining.length) lines.push(`  (${r.expectedRemaining.length} item(s) intentionally left for the contract phase / manual steps)`);
   return lines.join("\n");
+}
+
+export function formatPreflight(r: PreflightReport): string {
+  const head = r.verdict === "safe_now"
+    ? "Preflight: SAFE NOW (no session holds or waits for a conflicting lock)"
+    : `Preflight: WOULD WAIT behind ${r.blockingSessions} session(s)${r.oldestBlockingTransactionSeconds !== null ? `, oldest transaction ${r.oldestBlockingTransactionSeconds}s` : ""}`;
+  const lines = [head, `Visibility: ${r.visibility}`, ""];
+  for (const s of r.statements) {
+    const locks = s.locks.map((l) => `${l.mode} on ${l.table}`).join(", ") || "no table lock";
+    lines.push(`  ${String(s.index + 1).padStart(2)}. [${s.verdict === "safe_now" ? "ok  " : "WAIT"}] ${s.operation} (${locks})`);
+    for (const b of s.waitsFor) lines.push(`      - ${describeSession(b.session)} ${b.reason}`);
+  }
+  if (r.longTransactions.length) {
+    lines.push("", "Long or idle-in-transaction sessions:", ...r.longTransactions.map((s) => `  - ${describeSession(s)}`));
+  }
+  lines.push("", ...r.notes.map((n) => `Note: ${n}`));
+  return lines.join("\n");
+}
+
+function describeSession(s: SessionInfo): string {
+  const who = s.pid === null ? "prepared transaction" : `pid ${s.pid}`;
+  const details = [
+    s.user && `user=${s.user}`,
+    s.applicationName && `app=${s.applicationName}`,
+    s.state && `state=${s.state}`,
+    s.transactionAgeSeconds !== null && `transaction ${s.transactionAgeSeconds}s old`,
+  ].filter(Boolean);
+  return `${who}${details.length ? ` (${details.join(", ")})` : ""}`;
 }

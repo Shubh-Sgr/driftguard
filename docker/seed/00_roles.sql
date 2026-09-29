@@ -18,3 +18,8 @@ GRANT USAGE ON SCHEMA public TO driftguard_ro;
 -- Applies to tables created later by `postgres` (the seed below and eval scenarios).
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT ON TABLES TO driftguard_ro;
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT ON SEQUENCES TO driftguard_ro;
+
+-- Lets `driftguard preflight` see other sessions' states and transaction ages in
+-- pg_stat_activity (without it: "limited visibility"; lock conflicts still work).
+-- It also allows reading their query text; DriftGuard never returns or stores it.
+GRANT pg_read_all_stats TO driftguard_ro;

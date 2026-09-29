@@ -89,6 +89,19 @@ export function buildMcpServer(dg: DriftGuard): McpServer {
   );
 
   server.registerTool(
+    "check_lock_queue",
+    {
+      title: "Is it safe to run this migration right now?",
+      description:
+        "Live check on the TARGET: for each statement, compares the table lock it needs with the locks other sessions hold or are waiting for right now (pg_locks, full Postgres conflict table), and lists open transactions that CREATE INDEX CONCURRENTLY would wait for. Verdict: safe_now or would_wait (with the sessions: pid, user, application, state, transaction age, lock mode). Never returns other sessions' query text and never terminates anything. Without pg_read_all_stats, states and ages are unknown ('limited' visibility).",
+      inputSchema: { sql: z.string().min(1).describe("The migration SQL to check") },
+      // Not idempotent: the answer depends on what other sessions are doing this moment.
+      annotations: { ...READ_ONLY, idempotentHint: false },
+    },
+    ({ sql }) => run(() => dg.preflight(sql)),
+  );
+
+  server.registerTool(
     "suggest_safe_rewrite",
     {
       title: "Rewrite risky DDL safely",

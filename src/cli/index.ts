@@ -10,7 +10,7 @@ import { rewriteMigration } from "../rewrite/rewrite.js";
 import { DriftGuard } from "../service.js";
 import { VERSION } from "../version.js";
 import { inspectConnection } from "./doctor.js";
-import { formatDrift, formatLocks, formatShadow, formatVerify } from "./format.js";
+import { formatDrift, formatLocks, formatPreflight, formatShadow, formatVerify } from "./format.js";
 
 const program = new Command()
   .name("driftguard")
@@ -92,6 +92,17 @@ program
     const analysis = opts.offline ? await analyzeMigration(sql) : await withDriftGuard((dg) => dg.analyzeLocks(sql));
     print(opts.json, analysis, () => formatLocks(analysis));
     if (opts.failOn && RISK_ORDER.indexOf(analysis.maxRisk) >= RISK_ORDER.indexOf(opts.failOn as Risk)) process.exitCode = 1;
+  });
+
+program
+  .command("preflight <file>")
+  .description("Check whether a migration would have to wait for locks on the target right now (exit code 1 if it would)")
+  .option("--json", "print JSON")
+  .action(async (file, opts) => {
+    const sql = await readFile(file, "utf8");
+    const report = await withDriftGuard((dg) => dg.preflight(sql));
+    print(opts.json, report, () => formatPreflight(report));
+    if (report.verdict === "would_wait") process.exitCode = 1;
   });
 
 program

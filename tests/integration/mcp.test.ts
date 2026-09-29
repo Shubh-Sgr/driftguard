@@ -44,7 +44,7 @@ const call = async (name: string, args: Record<string, unknown> = {}) => {
 describe("MCP server (F8)", () => {
   it("lists the six read-only tools", async () => {
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(["analyze_locks", "detect_drift", "find_differing_rows", "plan_migration", "suggest_safe_rewrite", "verify_data"]);
+    expect(tools.map((t) => t.name).sort()).toEqual(["analyze_locks", "check_lock_queue", "detect_drift", "find_differing_rows", "plan_migration", "suggest_safe_rewrite", "verify_data"]);
     expect(tools.every((t) => t.annotations?.readOnlyHint === true)).toBe(true);
   });
 
@@ -67,6 +67,11 @@ describe("MCP server (F8)", () => {
     expect(["medium", "high", "critical"]).toContain(locks.statements[0].risk);
     const rewrite = JSON.parse((await call("suggest_safe_rewrite", { sql: "CREATE INDEX i ON transactions (amount)" })).text);
     expect(rewrite.script).toContain("CREATE INDEX CONCURRENTLY i ON transactions (amount);");
+  });
+
+  it("check_lock_queue gives a live verdict for submitted SQL", async () => {
+    const r = JSON.parse((await call("check_lock_queue", { sql: "SELECT * FROM accounts" })).text);
+    expect(r).toMatchObject({ verdict: "safe_now", statements: [{ operation: "SELECT", verdict: "safe_now" }] });
   });
 
   it("plan_migration returns SQL for a human, rules-only when no LLM is configured", async () => {

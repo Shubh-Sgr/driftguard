@@ -10,6 +10,7 @@ import { GeminiProvider } from "./llm/gemini.js";
 import { OllamaProvider } from "./llm/ollama.js";
 import type { LlmProvider } from "./llm/provider.js";
 import { analyzeMigration, type MigrationAnalysis } from "./locks/analyze.js";
+import { evaluatePreflight, readLockActivity, type PreflightReport } from "./locks/preflight.js";
 import { planMigration } from "./plan/plan.js";
 import type { MigrationPlan } from "./plan/types.js";
 import { createReceipt, type SignedReceipt } from "./receipt/receipt.js";
@@ -60,6 +61,16 @@ export class DriftGuard {
   /** F5: sizes come from the TARGET, the database the migration will run on. */
   async analyzeLocks(sql: string): Promise<MigrationAnalysis> {
     return analyzeMigration(sql, await introspect(this.target));
+  }
+
+  /**
+   * Is it safe to run this migration RIGHT NOW? Compares the locks it needs (F5) with
+   * the locks and open transactions on the target at this moment. Only reads catalogs.
+   */
+  async preflight(sql: string): Promise<PreflightReport> {
+    const analysis = await this.analyzeLocks(sql);
+    const tables = [...new Set(analysis.statements.flatMap((s) => s.locks.map((l) => l.table)))];
+    return evaluatePreflight(analysis, await readLockActivity(this.target, tables));
   }
 
   /** F6 */
