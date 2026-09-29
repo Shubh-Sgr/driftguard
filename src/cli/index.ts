@@ -6,6 +6,7 @@ import { analyzeMigration } from "../locks/analyze.js";
 import { RISK_ORDER, type Risk } from "../locks/risk.js";
 import { acceptanceNote, renderPlanSql } from "../plan/render.js";
 import { verifyReceipt, type SignedReceipt } from "../receipt/receipt.js";
+import { reviewFile, reviewMarkdown, reviewMaxRisk } from "../review/review.js";
 import { rewriteMigration } from "../rewrite/rewrite.js";
 import { DriftGuard } from "../service.js";
 import { VERSION } from "../version.js";
@@ -103,6 +104,25 @@ program
     const report = await withDriftGuard((dg) => dg.preflight(sql));
     print(opts.json, report, () => formatPreflight(report));
     if (report.verdict === "would_wait") process.exitCode = 1;
+  });
+
+program
+  .command("review <files...>")
+  .description("Offline lock analysis + safe rewrites for migration files, e.g. as a pull request comment (no database needed)")
+  .addOption(new Option("--format <format>", "output format").choices(["text", "markdown", "json"]).default("text"))
+  .option("--out <file>", "write the report to a file instead of stdout")
+  .addOption(new Option("--fail-on <risk>", "exit code 1 at or above this risk").choices(RISK_ORDER))
+  .action(async (files: string[], opts) => {
+    const reviews = await Promise.all(files.map(async (f) => reviewFile(f, await readFile(f, "utf8"))));
+    const output =
+      opts.format === "markdown" ? reviewMarkdown(reviews)
+      : opts.format === "json" ? JSON.stringify(reviews, null, 2)
+      : reviews.map((r) => `== ${r.path} ==\n${r.analysis ? formatLocks(r.analysis) : `could not analyze: ${r.error}`}`).join("\n\n");
+    if (opts.out) await writeFile(opts.out, `${output}\n`);
+    else console.log(output);
+    // A file that can't be parsed fails the check too: we can't vouch for it.
+    const failed = opts.failOn && (reviews.some((r) => r.error) || RISK_ORDER.indexOf(reviewMaxRisk(reviews)) >= RISK_ORDER.indexOf(opts.failOn as Risk));
+    if (failed) process.exitCode = 1;
   });
 
 program
