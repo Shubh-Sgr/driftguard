@@ -1,0 +1,63 @@
+name: DriftGuard migration review
+description: Lock analysis and safe rewrites for the SQL migrations a pull request changes, as a job summary and one PR comment.
+author: Shubh-Sgr
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  paths:
+    description: Migration file globs, one per line (git pathspec glob syntax, e.g. migrations/**/*.sql).
+    default: "migrations/**/*.sql"
+  fail-on:
+    description: Fail the job when a statement is at or above this risk (low, medium, high, critical). Empty = never fail.
+    default: ""
+  comment:
+    description: Post (and later update) one pull request comment. Needs `pull-requests write`; skipped with a warning when the token is read-only (fork PRs).
+    default: "true"
+  github-token:
+    description: Token used to comment.
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 22
+
+    # --ignore-scripts: the build only needs tsc; no dependency gets to run install hooks.
+    - name: Build DriftGuard
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npm ci --ignore-scripts --no-audit --no-fund && npm run build
+
+    # Inputs reach the scripts as environment variables, never spliced into the script
+    # text, so a crafted input can't inject shell commands.
+    - name: Review changed migrations
+      id: review
+      shell: bash
+      env:
+        PATHS: ${{ inputs.paths }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      run: bash "$GITHUB_ACTION_PATH/action/review.sh"
+
+    - name: Comment on the pull request
+      if: inputs.comment == 'true' && github.event.pull_request.number && steps.review.outputs.report != ''
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPORT: ${{ steps.review.outputs.report }}
+      run: bash "$GITHUB_ACTION_PATH/action/comment.sh"
+
+    # Last, so the summary and the comment are there even when the check fails.
+    - name: Apply fail-on
+      if: steps.review.outputs.failed == 'true'
+      shell: bash
+      env:
+        FAIL_ON: ${{ inputs.fail-on }}
+      run: |
+        echo "::error::DriftGuard: a migration is at or above '$FAIL_ON' risk (or could not be parsed). See the job summary."
+        exit 1

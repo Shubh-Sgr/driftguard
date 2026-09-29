@@ -1,0 +1,26 @@
+name: Migration review (self-test)
+
+# Runs this repo's own action (./action.yml) on pull requests that change example
+# migrations or the action itself. `pull_request`, never `pull_request_target`: a fork's
+# code then runs with a read-only token and no secrets, and the action only warns
+# instead of commenting.
+on:
+  pull_request:
+    paths:
+      - "examples/**/*.sql"
+      - "action.yml"
+      - "action/**"
+      - "src/review/**"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./
+        with:
+          paths: examples/**/*.sql
