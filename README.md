@@ -29,7 +29,7 @@ All numbers come from `npm run eval` against the seeded Docker databases. The fu
 | Lock mode predicted vs lock actually taken (read from `pg_locks`) | **30/30** statements |
 | Table rewrite predicted vs actual rewrite (`pg_class.relfilenode` changed) | **29/29** statements |
 | Rules-only migration plans that pass a shadow run on a real schema copy | **17/17** |
-| LLM plans (local llama3.2, 3B), 17 drift scenarios | **5.9%** valid on first try, **17.6%** after one retry, **82.4%** fell back to the rules plan; **0/3** accepted LLM plans passed the shadow run |
+| LLM plans (local llama3.2, 3B), 17 drift scenarios, *validator-only acceptance (v0.1.0)* | **5.9%** valid on first try, **17.6%** after one retry, **82.4%** fell back to the rules plan; **0/3** accepted LLM plans passed the shadow run |
 
 **Application stall during the migration**, measured on the 1M-row table with a probe query every ~10 ms ([evals/results-rewrite.md](evals/results-rewrite.md)):
 
@@ -43,6 +43,8 @@ All numbers come from `npm run eval` against the seeded Docker databases. The fu
 | `ALTER COLUMN merchant_id TYPE bigint` | 8.90 s | 174 ms | 32.7 s (+4 manual steps) |
 
 **What the LLM numbers show:** a small local model is not reliable at migration planning. That's why DriftGuard never trusts it. The validator rejected 14/17 plans (unparseable SQL, hallucinated or duplicate objects, blocking DDL). The 3 it accepted were *safe but incomplete*, and only the shadow run caught that (e.g. a missing index and a sequence left out when re-creating a dropped table). Deterministic rules plans passed 17/17. Details: [evals/results-llm.md](evals/results-llm.md).
+
+**What changed because of it:** those numbers were measured when the validator alone decided. Now an LLM plan is accepted only if it passes the validator **and** a shadow run whose result matches the source exactly; a shadow failure is sent back to the LLM for one retry, then DriftGuard falls back to the rules plan. So the 3 incomplete plans above would now be rejected. The LLM eval has not been re-run with the new pipeline yet, so there is no new number here.
 
 The trade-off is visible: the rewrites that need a backfill take much longer in total, but the application keeps running.
 These are single runs on a laptop (Apple M1, 8 cores, Docker Desktop). Expect the absolute numbers to vary; the gap is the point.
@@ -77,7 +79,7 @@ flowchart LR
 | F4 | Checksum bisection | Merkle-style: split the mismatched chunk at its median key and recurse only into halves whose hashes differ |
 | F5 | Lock analyzer | [libpg-query](https://github.com/launchql/libpg-query-node) (Postgres' own parser, WASM) → rule table → risk from `reltuples` |
 | F6 | Safe rewrites | `CONCURRENTLY`, `NOT VALID` + `VALIDATE`, `UNIQUE ... USING INDEX`, expand/contract, batched `DO` loops with `COMMIT` per batch |
-| F7 | Guarded LLM planner | zod-checked JSON → validator (parses, allow-list, objects exist, no unsafe DDL) → one retry → rules-only fallback |
+| F7 | Guarded LLM planner | zod-checked JSON → validator (parses, allow-list, objects exist, no unsafe DDL) → shadow run (the result must match the source) → one retry with the errors → rules-only fallback |
 | F8 | MCP server | 6 read-only tools over stdio |
 | F9 | Eval suite | 21 drift/data scenarios, 30 lock statements with ground truth from Postgres, and a stall benchmark under load |
 | F10 | Shadow runs | Copies the target's *schema* into a disposable container, applies the plan, and diffs the result against the source |
@@ -184,7 +186,7 @@ Expect `SET lock_timeout` first. `CREATE INDEX` becomes `CONCURRENTLY`, the FK g
 
 ```bash
 npm run cli -- plan --no-llm   # rules-only: each step has risk, reversibility and rollback SQL
-npm run cli -- plan            # optional, ~2 min: the LLM plans (needs Ollama); watch the guardrail reject bad plans
+npm run cli -- plan            # optional, ~2 min: the LLM plans (needs Ollama + Docker); watch the validator and the shadow run reject bad plans
 ```
 The data-lossy `DROP COLUMN legacy_code` step is commented out unless you pass `--allow-data-loss`.
 
@@ -245,7 +247,7 @@ Add `--scope project` to store it in the project's `.mcp.json` (shared with your
 
 **Or Docker, no Node needed.** Use [examples/mcp-docker.json](examples/mcp-docker.json). Inside a container `localhost` is the container itself, so the URLs use `host.docker.internal` to reach databases on your machine. Build the image once from the repo folder: `docker build -t driftguard .`
 
-`DRIFTGUARD_LLM=none` means `plan_migration` returns the deterministic rules-only plan. Set `ollama` to let a local model propose plans (they still go through the validator).
+`DRIFTGUARD_LLM=none` means `plan_migration` returns the deterministic rules-only plan. Set `ollama` to let a local model propose plans. They still have to pass the validator and a shadow run, which needs Docker on the machine running the server. Without Docker, the plan falls back to the rules plan, and the reason is included in the output.
 
 ### Step 3: check it's connected
 
@@ -266,7 +268,7 @@ Add `--scope project` to store it in the project's `.mcp.json` (shared with your
 
 A typical agentic flow: *"Check target for drift, explain the risky items, and give me a safe migration plan"*. The assistant calls `detect_drift`, then `plan_migration`, and may run `analyze_locks` on the result.
 
-**Safety:** all 6 tools are read-only (annotated `readOnlyHint: true`). None of them can write to a database; plans come back as SQL for you to review and run yourself. Connection strings come from the config above, never from the conversation. Row values are only returned when explicitly asked for.
+**Safety:** all 6 tools are read-only (annotated `readOnlyHint: true`). None of them can write to your databases; plans come back as SQL for you to review and run yourself. The one side effect: with an LLM configured, `plan_migration` starts a short-lived local Postgres container for the shadow run and removes it afterwards. Connection strings come from the config above, never from the conversation. Row values are only returned when explicitly asked for.
 
 ### Troubleshooting
 
@@ -328,7 +330,8 @@ npx tsx src/cli/index.ts locks migrations/0042_add_index.sql --offline --fail-on
 - **Parameterized queries** for every value. Identifiers come only from the catalog, and they are quoted.
 - **Connection strings** come only from the environment, never from tool input.
 - **No row data is sent to the LLM.** The prompt contains the drift report and table shapes only. That blocks prompt injection through database contents, and your data never leaves the machine with Ollama.
-- **Shadow runs** write only to a container DriftGuard creates on `127.0.0.1` with a random password, and removes afterwards.
+- **Shadow runs** write only to a container DriftGuard creates on `127.0.0.1` with a random password, and removes afterwards (also on Ctrl-C). Plan SQL is treated as untrusted: it runs as a non-superuser role that owns the copied schema, so `pg_read_file()` or `COPY ... PROGRAM` fail with "permission denied". Each statement has a client-side timeout the plan can't lift, and the container is capped at 256 MB, 1 CPU and 256 processes.
+- **LLM plans are proven, not trusted:** a plan is accepted only after the validator and a shadow run both pass (`DRIFTGUARD_SHADOW_VERIFY=off` skips the shadow run, and the output then warns that the plan is not proven complete). If the shadow can't run (e.g. no Docker), the LLM plan is not accepted. Error messages sent back to the LLM come from a schema-only database, so they can't contain row data.
 
 ## Design decisions
 
@@ -349,7 +352,7 @@ npx tsx src/cli/index.ts locks migrations/0042_add_index.sql --offline --fail-on
 - The lock analyzer knows about 30 statement shapes. Anything else is flagged "not in the rule table", never silently rated safe.
 - Automatic batched backfills need a single integer primary key; otherwise the backfill step becomes a manual template.
 - Shadow runs copy the **schema only**, so they prove the resulting structure, not timing under production load (the lock analyzer covers that).
-- The demo databases listen on `127.0.0.1` only. On **Linux**, shadow containers reach the host through the Docker bridge, not loopback, so `shadow` against the demo databases needs them published on the bridge too (e.g. change `127.0.0.1:5433` to `172.17.0.1:5433` in `docker/docker-compose.yml`). macOS and Windows (Docker Desktop) work as-is.
+- The demo databases listen on `127.0.0.1` only. On **Linux**, shadow containers reach the host through the Docker bridge, not loopback, so shadow runs against the demo databases need them published on the bridge too: `npm run db:down && DB_BIND=172.17.0.1 npm run db:up` (CI uses `0.0.0.0` on its throwaway runner). macOS and Windows (Docker Desktop) work as-is.
 - Expand/contract for type changes still needs human steps: deploying dual-writes and re-creating indexes/FKs on the new column.
 - The eval scenarios were written by me. They cover known cases, including tricky ones (volatile defaults, composite keys, partial indexes, session-setting traps), and they're all public in [evals/scenarios](evals/scenarios).
 - The Gemini adapter is implemented but was not exercised in the evals (no API key used).
@@ -360,15 +363,14 @@ npx tsx src/cli/index.ts locks migrations/0042_add_index.sql --offline --fail-on
 - Replication-aware verification: compare both sides at a known LSN.
 - A GitHub Action that comments lock analysis on migration pull requests.
 - Automatic re-creation of indexes/FKs in the type-change rewrite.
-- Make a passing shadow run part of accepting an LLM plan (today the validator proves a plan safe, not complete).
 - Signed receipts (Ed25519) in addition to the SHA-256 integrity hash.
 - Hosted demo on free tiers (Neon branches for shadow runs).
 
 ## Development
 
 ```bash
-npm test                  # 112 unit tests, no database needed
-npm run test:integration  # needs `npm run db:up`
+npm test                  # 123 unit tests, no database needed
+npm run test:integration  # needs `npm run db:up` and Docker (shadow runs)
 npm run eval              # all evals → evals/results*.md
 npm run eval -- --only scenarios --llm llama3.2   # include LLM plans (needs Ollama)
 ```
