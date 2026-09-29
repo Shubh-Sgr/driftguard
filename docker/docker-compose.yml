@@ -31,9 +31,11 @@ x-postgres: &postgres
 services:
   source-db:
     <<: *postgres
-    # 127.0.0.1 only: the demo superuser password is "postgres", so never expose it to the network.
-    ports: ["127.0.0.1:5433:5432"]
+    # 127.0.0.1 by default: the demo superuser password is "postgres", so never expose it
+    # to the network. DB_BIND=0.0.0.0 is only for throwaway CI runners, where shadow
+    # containers reach the host through the Docker bridge instead of loopback (Linux).
+    ports: ["${DB_BIND:-127.0.0.1}:5433:5432"]
 
   target-db:
     <<: *postgres
-    ports: ["127.0.0.1:5434:5432"]
+    ports: ["${DB_BIND:-127.0.0.1}:5434:5432"]
