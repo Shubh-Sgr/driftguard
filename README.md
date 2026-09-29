@@ -86,7 +86,7 @@ flowchart LR
 
 ## Quickstart (local, zero cost)
 
-Requirements: Node 20+ and Docker.
+Requirements: Node 22 (or 20.12+) and Docker.
 
 ```bash
 git clone https://github.com/Shubh-Sgr/driftguard.git && cd driftguard
@@ -349,6 +349,7 @@ npx tsx src/cli/index.ts locks migrations/0042_add_index.sql --offline --fail-on
 - The lock analyzer knows about 30 statement shapes. Anything else is flagged "not in the rule table", never silently rated safe.
 - Automatic batched backfills need a single integer primary key; otherwise the backfill step becomes a manual template.
 - Shadow runs copy the **schema only**, so they prove the resulting structure, not timing under production load (the lock analyzer covers that).
+- The demo databases listen on `127.0.0.1` only. On **Linux**, shadow containers reach the host through the Docker bridge, not loopback, so `shadow` against the demo databases needs them published on the bridge too (e.g. change `127.0.0.1:5433` to `172.17.0.1:5433` in `docker/docker-compose.yml`). macOS and Windows (Docker Desktop) work as-is.
 - Expand/contract for type changes still needs human steps: deploying dual-writes and re-creating indexes/FKs on the new column.
 - The eval scenarios were written by me. They cover known cases, including tricky ones (volatile defaults, composite keys, partial indexes, session-setting traps), and they're all public in [evals/scenarios](evals/scenarios).
 - The Gemini adapter is implemented but was not exercised in the evals (no API key used).
