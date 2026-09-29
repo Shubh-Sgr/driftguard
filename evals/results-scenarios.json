@@ -1,0 +1,410 @@
+{
+  "runAt": "2026-09-29T01:49:36.729Z",
+  "environment": {
+    "node": "v21.6.2",
+    "platform": "darwin arm64",
+    "cpu": "Apple M1 x8",
+    "postgres": "16.15",
+    "llm": null
+  },
+  "scenarios": [
+    {
+      "name": "01_widen_numeric",
+      "description": "Widening type change (numeric(12,2) -> numeric(16,2))",
+      "drift": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "attempts": [],
+        "steps": 12,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "02_narrow_varchar",
+      "description": "Narrowing type change (text -> varchar(50))",
+      "drift": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "attempts": [],
+        "steps": 1,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "03_column_missing",
+      "description": "Column dropped on target",
+      "drift": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "attempts": [],
+        "steps": 1,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "04_extra_not_null_column",
+      "description": "Extra NOT NULL column on target",
+      "drift": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "attempts": [],
+        "steps": 1,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "05_index_missing",
+      "description": "Performance index missing",
+      "drift": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "attempts": [],
+        "steps": 1,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "06_partial_index_predicate",
+      "description": "Partial-index predicate changed",
+      "drift": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "attempts": [],
+        "steps": 2,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "07_fk_missing",
+      "description": "Foreign key missing",
+      "drift": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "attempts": [],
+        "steps": 2,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "08_fk_not_valid",
+      "description": "Foreign key present but NOT VALID",
+      "drift": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "attempts": [],
+        "steps": 1,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "09_check_changed",
+      "description": "CHECK constraint allows an extra value",
+      "drift": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "attempts": [],
+        "steps": 3,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "10_unique_missing",
+      "description": "UNIQUE constraint missing (and its index)",
+      "drift": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "attempts": [],
+        "steps": 2,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "11_nullability_relaxed",
+      "description": "NOT NULL dropped on target",
+      "drift": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "attempts": [],
+        "steps": 4,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "12_default_changed",
+      "description": "Column default changed",
+      "drift": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "attempts": [],
+        "steps": 1,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "13_table_missing",
+      "description": "Whole table missing (with its identity sequence)",
+      "drift": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "attempts": [],
+        "steps": 2,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "14_table_extra",
+      "description": "Unexpected extra table on target",
+      "drift": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "attempts": [],
+        "steps": 1,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "15_sequence_changed",
+      "description": "Sequence increment changed",
+      "drift": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "attempts": [],
+        "steps": 1,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "16_column_renamed",
+      "description": "Column renamed (looks like drop + add)",
+      "drift": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "attempts": [],
+        "steps": 7,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "17_data_one_row_changed",
+      "description": "One value changed in 1M transactions (no schema drift)",
+      "drift": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "data": {
+        "tablesTp": 1,
+        "tablesFp": 0,
+        "tablesFn": 0,
+        "rowsExpected": 1,
+        "rowsFound": 1,
+        "rowsFalse": 0,
+        "rowsFetched": 78,
+        "rowsInMismatchedTables": 2000000,
+        "hashQueries": 16,
+        "verifyMs": 5033
+      }
+    },
+    {
+      "name": "18_data_rows_deleted",
+      "description": "Three rows missing from 2M ledger entries",
+      "drift": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "data": {
+        "tablesTp": 1,
+        "tablesFp": 0,
+        "tablesFn": 0,
+        "rowsExpected": 3,
+        "rowsFound": 3,
+        "rowsFalse": 0,
+        "rowsFetched": 155,
+        "rowsInMismatchedTables": 3999997,
+        "hashQueries": 32,
+        "verifyMs": 9522
+      }
+    },
+    {
+      "name": "19_data_composite_and_no_pk",
+      "description": "Changes in a composite-PK table and in a table without a PK",
+      "drift": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "data": {
+        "tablesTp": 2,
+        "tablesFp": 0,
+        "tablesFn": 0,
+        "rowsExpected": 1,
+        "rowsFound": 1,
+        "rowsFalse": 0,
+        "rowsFetched": 78,
+        "rowsInMismatchedTables": 80000,
+        "hashQueries": 16,
+        "verifyMs": 208
+      }
+    },
+    {
+      "name": "20_session_settings_no_false_positive",
+      "description": "Target server has different TimeZone/DateStyle/float settings; data is identical",
+      "drift": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "data": {
+        "tablesTp": 0,
+        "tablesFp": 0,
+        "tablesFn": 0,
+        "rowsExpected": 0,
+        "rowsFound": 0,
+        "rowsFalse": 0,
+        "rowsFetched": 0,
+        "rowsInMismatchedTables": 0,
+        "hashQueries": 0,
+        "verifyMs": 11013
+      }
+    },
+    {
+      "name": "21_combined",
+      "description": "Several kinds of drift at once",
+      "drift": {
+        "tp": 5,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "attempts": [],
+        "steps": 17,
+        "shadow": "pass"
+      }
+    }
+  ]
+}

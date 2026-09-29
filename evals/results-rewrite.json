@@ -1,0 +1,120 @@
+{
+  "runAt": "2026-09-29T01:51:37.134Z",
+  "environment": {
+    "node": "v21.6.2",
+    "platform": "darwin arm64",
+    "cpu": "Apple M1 x8",
+    "postgres": "16.15",
+    "llm": null
+  },
+  "rewrite": [
+    {
+      "name": "CREATE INDEX",
+      "sql": "CREATE INDEX idx_amount ON transactions (amount)",
+      "original": {
+        "ok": true,
+        "durationMs": 912,
+        "maxStallMs": 901,
+        "probes": 45
+      },
+      "rewritten": {
+        "ok": true,
+        "durationMs": 912,
+        "maxStallMs": 37,
+        "probes": 105
+      },
+      "rewrittenSteps": 1,
+      "manualStepsSkipped": 0
+    },
+    {
+      "name": "ADD FOREIGN KEY",
+      "sql": "ALTER TABLE ledger_entries ADD CONSTRAINT le_account_fk2 FOREIGN KEY (account_id) REFERENCES accounts (id)",
+      "original": {
+        "ok": true,
+        "durationMs": 625,
+        "maxStallMs": 612,
+        "probes": 47
+      },
+      "rewritten": {
+        "ok": true,
+        "durationMs": 403,
+        "maxStallMs": 8,
+        "probes": 74
+      },
+      "rewrittenSteps": 2,
+      "manualStepsSkipped": 0
+    },
+    {
+      "name": "ADD CHECK",
+      "sql": "ALTER TABLE transactions ADD CONSTRAINT amount_positive CHECK (amount > 0)",
+      "original": {
+        "ok": true,
+        "durationMs": 265,
+        "maxStallMs": 255,
+        "probes": 49
+      },
+      "rewritten": {
+        "ok": true,
+        "durationMs": 284,
+        "maxStallMs": 8,
+        "probes": 69
+      },
+      "rewrittenSteps": 2,
+      "manualStepsSkipped": 0
+    },
+    {
+      "name": "SET NOT NULL",
+      "sql": "ALTER TABLE transactions ALTER COLUMN channel SET NOT NULL",
+      "original": {
+        "ok": true,
+        "durationMs": 455,
+        "maxStallMs": 438,
+        "probes": 48
+      },
+      "rewritten": {
+        "ok": true,
+        "durationMs": 451,
+        "maxStallMs": 25,
+        "probes": 73
+      },
+      "rewrittenSteps": 4,
+      "manualStepsSkipped": 0
+    },
+    {
+      "name": "ADD COLUMN volatile DEFAULT",
+      "sql": "ALTER TABLE transactions ADD COLUMN ref uuid NOT NULL DEFAULT gen_random_uuid()",
+      "original": {
+        "ok": true,
+        "durationMs": 6817,
+        "maxStallMs": 6683,
+        "probes": 58
+      },
+      "rewritten": {
+        "ok": true,
+        "durationMs": 46296,
+        "maxStallMs": 583,
+        "probes": 3479
+      },
+      "rewrittenSteps": 7,
+      "manualStepsSkipped": 0
+    },
+    {
+      "name": "ALTER COLUMN TYPE",
+      "sql": "ALTER TABLE transactions ALTER COLUMN merchant_id TYPE bigint",
+      "original": {
+        "ok": true,
+        "durationMs": 9092,
+        "maxStallMs": 8903,
+        "probes": 62
+      },
+      "rewritten": {
+        "ok": true,
+        "durationMs": 32670,
+        "maxStallMs": 174,
+        "probes": 2498
+      },
+      "rewrittenSteps": 3,
+      "manualStepsSkipped": 4
+    }
+  ]
+}
