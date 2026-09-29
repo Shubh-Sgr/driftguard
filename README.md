@@ -5,6 +5,10 @@ The LLM proposes; deterministic code decides.
 
 [![CI](https://github.com/Shubh-Sgr/driftguard/actions/workflows/ci.yml/badge.svg)](https://github.com/Shubh-Sgr/driftguard/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+![DriftGuard in a terminal: schema drift, the exact differing rows, the locks a migration takes, and its safe rewrite](docs/demo.gif)
+
+<sub>Real output against the seeded demo databases (1M transactions, 2M ledger entries) with the target broken as in [step 2 below](#step-by-step-test-every-feature); sped up (the `verify` run took 7.0 s).</sub>
+
 ## The problem
 
 Writing `ALTER TABLE` is the easy part of a database migration. The hard parts are:
