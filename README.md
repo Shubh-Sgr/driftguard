@@ -7,7 +7,7 @@ The LLM proposes; deterministic code decides.
 
 ![DriftGuard in a terminal: schema drift, the exact differing rows, the locks a migration takes, and its safe rewrite](docs/demo.gif)
 
-<sub>Real output against the seeded demo databases (1M transactions, 2M ledger entries) with the target broken as in [step 2 below](#step-by-step-test-every-feature); sped up (the `verify` run took 7.0 s).</sub>
+<sub>Real output against the seeded demo databases (1M transactions, 2M ledger entries) with the target broken as in [step 2 below](#step-by-step-test-every-feature). Typing is real-time; command run times are shortened (the `verify` run took 7.0 s).</sub>
 
 ## The problem
 
