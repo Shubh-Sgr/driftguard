@@ -2,5 +2,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Report a security vulnerability
-    url: https://github.com/Shubh-Sgr/driftguard/security/advisories/new
+    url: https://github.com/Shubh-Sgr/pgvouch/security/advisories/new
     about: Please report vulnerabilities privately, not in a public issue.

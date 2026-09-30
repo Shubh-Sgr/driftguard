@@ -11,7 +11,7 @@ export interface RawStep {
   title: string;
   sql: string;
   rationale: string;
-  /** Set for DriftGuard's own batched backfill loops (they only fill NULLs in a new column). */
+  /** Set for PgVouch's own batched backfill loops (they only fill NULLs in a new column). */
   backfill?: boolean;
 }
 

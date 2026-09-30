@@ -3,7 +3,7 @@ import { maxRisk, type Risk } from "../locks/risk.js";
 import { rewriteMigration, type RewriteResult } from "../rewrite/rewrite.js";
 
 /**
- * `driftguard review`: offline lock analysis + safe-rewrite suggestions for migration
+ * `pgvouch review`: offline lock analysis + safe-rewrite suggestions for migration
  * files, rendered as Markdown for a pull request comment or a CI job summary.
  * Offline means no database is contacted, so it is safe to run on untrusted PRs.
  */
@@ -16,7 +16,7 @@ export interface FileReview {
 }
 
 /** First line of every comment we post, so the action can find and update it. */
-export const REVIEW_MARKER = "<!-- driftguard-review -->";
+export const REVIEW_MARKER = "<!-- pgvouch-review -->";
 
 // GitHub rejects comments over 65,536 characters; stay well below.
 export const MAX_COMMENT_CHARS = 60_000;
@@ -58,20 +58,20 @@ export function reviewMarkdown(reviews: FileReview[], opts: { maxChars?: number 
   const statements = reviews.reduce((n, r) => n + (r.analysis?.statements.length ?? 0), 0);
   const head = [
     REVIEW_MARKER,
-    "## DriftGuard migration review",
+    "## PgVouch migration review",
     "",
     reviews.length
       ? `Highest lock risk: **${reviewMaxRisk(reviews).toUpperCase()}** across ${reviews.length} file(s), ${statements} statement(s).`
       : "No migration files changed.",
     "",
-    "_Offline analysis: no database was contacted, so table sizes are unknown. For size-aware risk run `driftguard locks <file>`, and `driftguard preflight <file>` just before deploying._",
+    "_Offline analysis: no database was contacted, so table sizes are unknown. For size-aware risk run `pgvouch locks <file>`, and `pgvouch preflight <file>` just before deploying._",
     "",
     "",
   ].join("\n");
 
   // Each file is one section; whole sections are dropped (never cut in half, which
   // could leave a code fence open) once the comment would get too long.
-  const truncatedNote = (n: number) => `\n_…${n} more file(s) not shown: the comment would exceed GitHub's size limit. Run \`driftguard review\` locally for the full report._\n`;
+  const truncatedNote = (n: number) => `\n_…${n} more file(s) not shown: the comment would exceed GitHub's size limit. Run \`pgvouch review\` locally for the full report._\n`;
   let body = head;
   const sections = reviews.map(fileSection);
   for (const [i, section] of sections.entries()) {

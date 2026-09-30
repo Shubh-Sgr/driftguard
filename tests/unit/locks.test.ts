@@ -99,7 +99,7 @@ describe("lock rule table (F5)", () => {
 
   it("does not pretend unknown statements are safe", async () => {
     const s = await one("CREATE EXTENSION pg_trgm");
-    expect(s.notes.join()).toMatch(/not in DriftGuard's lock rule table/);
+    expect(s.notes.join()).toMatch(/not in PgVouch's lock rule table/);
   });
 });
 

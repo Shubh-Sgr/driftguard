@@ -24,7 +24,7 @@ import { findDifferingRowsInTable, verifyData, type TableVerification, type Veri
  * call these methods, so they can never behave differently.
  * Both pools are read-only (see db.ts); nothing here writes to source or target.
  */
-export class DriftGuard {
+export class PgVouch {
   readonly source: pg.Pool;
   readonly target: pg.Pool;
 
@@ -80,7 +80,7 @@ export class DriftGuard {
 
   /**
    * F7: useLlm=false forces a rules-only plan. With an LLM, a plan is accepted only
-   * after the validator AND a shadow run (F10) pass, unless DRIFTGUARD_SHADOW_VERIFY=off.
+   * after the validator AND a shadow run (F10) pass, unless PGVOUCH_SHADOW_VERIFY=off.
    */
   async plan(opts: { useLlm?: boolean } = {}): Promise<{ drift: DriftReport; plan: MigrationPlan }> {
     const { source, target } = await this.schemas();
@@ -107,7 +107,7 @@ export class DriftGuard {
     const { llm } = this.config;
     if (llm.provider === "ollama") return new OllamaProvider(llm.ollamaModel, llm.ollamaUrl);
     if (llm.provider === "gemini") {
-      if (!llm.geminiApiKey) throw new Error("DRIFTGUARD_LLM=gemini needs GEMINI_API_KEY");
+      if (!llm.geminiApiKey) throw new Error("PGVOUCH_LLM=gemini needs GEMINI_API_KEY");
       return new GeminiProvider(llm.geminiApiKey, llm.geminiModel);
     }
     return undefined;

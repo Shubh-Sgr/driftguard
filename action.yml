@@ -1,4 +1,4 @@
-name: DriftGuard migration review
+name: PgVouch migration review
 description: Lock analysis and safe rewrites for the SQL migrations a pull request changes, as a job summary and one PR comment.
 author: Shubh-Sgr
 branding:
@@ -27,7 +27,7 @@ runs:
         node-version: 22
 
     # --ignore-scripts: the build only needs tsc; no dependency gets to run install hooks.
-    - name: Build DriftGuard
+    - name: Build PgVouch
       shell: bash
       working-directory: ${{ github.action_path }}
       run: npm ci --ignore-scripts --no-audit --no-fund && npm run build
@@ -59,5 +59,5 @@ runs:
       env:
         FAIL_ON: ${{ inputs.fail-on }}
       run: |
-        echo "::error::DriftGuard: a migration is at or above '$FAIL_ON' risk (or could not be parsed). See the job summary."
+        echo "::error::PgVouch: a migration is at or above '$FAIL_ON' risk (or could not be parsed). See the job summary."
         exit 1

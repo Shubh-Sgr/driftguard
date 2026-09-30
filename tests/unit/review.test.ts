@@ -22,7 +22,7 @@ describe("codeFence", () => {
 describe("reviewMarkdown", () => {
   it("starts with the marker and summarizes risk; suggests a rewrite for risky DDL", async () => {
     const md = reviewMarkdown([await reviewFile("db/001.sql", "CREATE INDEX i ON accounts (status);")]);
-    expect(md.startsWith(`${REVIEW_MARKER}\n## DriftGuard migration review`)).toBe(true);
+    expect(md.startsWith(`${REVIEW_MARKER}\n## PgVouch migration review`)).toBe(true);
     expect(md).toContain("| 1 | CREATE INDEX | SHARE on public.accounts | writes | scans table |");
     expect(md).toContain("<summary>Suggested safe rewrite</summary>");
     expect(md).toContain("CREATE INDEX CONCURRENTLY i ON accounts (status);");
