@@ -38,8 +38,21 @@ export class PgVouch {
   }
 
   async schemas(schemaNames?: string[]): Promise<{ source: Schema; target: Schema }> {
+    if (schemaNames?.length) await this.requireSchemas(schemaNames);
     const [source, target] = await Promise.all([introspect(this.source, schemaNames), introspect(this.target, schemaNames)]);
     return { source, target };
+  }
+
+  /**
+   * A typo'd schema name would compare two empty schemas and report "no drift": a false
+   * all-clear. A schema that exists on only one side is real drift, so that's allowed.
+   */
+  private async requireSchemas(names: string[]): Promise<void> {
+    const sql = "SELECT nspname FROM pg_namespace WHERE nspname = ANY($1::text[])";
+    const [s, t] = await Promise.all([this.source.query(sql, [names]), this.target.query(sql, [names])]);
+    const found = new Set([...s.rows, ...t.rows].map((r: { nspname: string }) => r.nspname));
+    const missing = names.filter((n) => !found.has(n));
+    if (missing.length) throw new Error(`Unknown schema(s), not found on source or target: ${missing.join(", ")}`);
   }
 
   /** F1 + F2 */

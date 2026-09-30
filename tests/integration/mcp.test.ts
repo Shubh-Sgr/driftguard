@@ -85,4 +85,13 @@ describe("MCP server (F8)", () => {
     expect(r.isError).toBe(true);
     expect(r.text).toMatch(/syntax error/);
   });
+
+  it("reports unknown schemas and tables as errors, not as \"no drift\" or \"differences\"", async () => {
+    const drift = await call("detect_drift", { schemas: ["nosuchschema"] });
+    expect(drift.isError).toBe(true);
+    expect(drift.text).toMatch(/Unknown schema\(s\).*nosuchschema/);
+    const rows = await call("find_differing_rows", { table: "nosuchtable" });
+    expect(rows.isError).toBe(true);
+    expect(rows.text).toMatch(/Unknown table\(s\).*public.nosuchtable/);
+  });
 });

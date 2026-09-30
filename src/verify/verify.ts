@@ -59,7 +59,7 @@ export async function verifyData(sourcePool: pg.Pool, targetPool: pg.Pool, opts:
     ]);
 
     const tables: TableVerification[] = [];
-    for (const key of selectTables(sourceSchema, opts.tables)) {
+    for (const key of selectTables(sourceSchema, targetSchema, opts.tables)) {
       tables.push(await verifyTable(source, target, sourceSchema, targetSchema, key, chunkSize, opts));
     }
     return {
@@ -72,11 +72,16 @@ export async function verifyData(sourcePool: pg.Pool, targetPool: pg.Pool, opts:
   }
 }
 
-function selectTables(schema: Schema, requested?: string[]): string[] {
-  const all = Object.keys(schema.tables).sort();
+function selectTables(source: Schema, target: Schema, requested?: string[]): string[] {
+  const all = Object.keys(source.tables).sort();
   if (!requested?.length) return all;
   // Accept "transactions" as shorthand for "public.transactions".
-  return requested.map((name) => (name.includes(".") ? name : `public.${name}`));
+  const keys = requested.map((name) => (name.includes(".") ? name : `public.${name}`));
+  // A typo would otherwise be reported as "DIFFERENCES FOUND: table missing on source".
+  // A table on only one side is real drift and is still reported (as skipped).
+  const unknown = keys.filter((k) => !source.tables[k] && !target.tables[k]);
+  if (unknown.length) throw new Error(`Unknown table(s), not found on source or target: ${unknown.join(", ")}`);
+  return keys;
 }
 
 async function verifyTable(

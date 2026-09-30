@@ -97,4 +97,8 @@ describe("verifyData (F3) + bisection (F4)", () => {
     expect(report.tables[0]).toMatchObject({ status: "skipped" });
     expect(report.tables[0]!.reason).toMatch(/note/);
   });
+
+  it("rejects a table that exists on neither side instead of reporting a difference", async () => {
+    await expect(verifyData(source, target, { tables: ["transactionz"] })).rejects.toThrow("Unknown table(s), not found on source or target: public.transactionz");
+  });
 });

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFile, writeFile } from "node:fs/promises";
-import { Command, Option } from "commander";
+import { Command, InvalidArgumentError, Option } from "commander";
 import { loadConfig, redactUrl } from "../config.js";
 import { analyzeMigration } from "../locks/analyze.js";
 import { RISK_ORDER, type Risk } from "../locks/risk.js";
@@ -27,6 +27,13 @@ async function withPgVouch<T>(fn: (dg: PgVouch) => Promise<T>): Promise<T> {
     await dg.close();
   }
 }
+
+/** Option parser: a whole number >= min, so bad input fails here instead of as a SQL error. */
+const intAtLeast = (min: number) => (value: string) => {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < min) throw new InvalidArgumentError(`must be a whole number >= ${min}.`);
+  return n;
+};
 
 const print = (json: boolean | undefined, data: unknown, text: () => string) =>
   console.log(json ? JSON.stringify(data, null, 2) : text());
@@ -70,9 +77,9 @@ program
   .command("verify")
   .description("Prove table data is identical with chunked checksums (exit code 1 if not)")
   .option("--table <names...>", "only these tables")
-  .option("--chunk-size <n>", "rows per chunk", (v) => Number(v), 10_000)
+  .option("--chunk-size <n>", "rows per chunk (>= 100)", intAtLeast(100), 10_000)
   .option("--rows", "bisect mismatched chunks to list the exact differing rows")
-  .option("--max-rows <n>", "stop after this many differing rows", (v) => Number(v), 1000)
+  .option("--max-rows <n>", "stop after this many differing rows", intAtLeast(1), 1000)
   .option("--json", "print JSON")
   .action((opts) =>
     withPgVouch(async (dg) => {
@@ -199,7 +206,13 @@ program
   .command("receipt-verify <file>")
   .description("Check that a receipt has not been modified since it was written")
   .action(async (file) => {
-    const result = verifyReceipt(JSON.parse(await readFile(file, "utf8")) as SignedReceipt);
+    const receipt = JSON.parse(await readFile(file, "utf8")) as SignedReceipt;
+    if (typeof receipt?.integrity?.hash !== "string") {
+      console.log("NOT A RECEIPT: no integrity block. Was this file written by `pgvouch receipt`?");
+      process.exitCode = 1;
+      return;
+    }
+    const result = verifyReceipt(receipt);
     console.log(result.valid ? `OK: receipt intact (sha256 ${result.actual})` : `MODIFIED: expected ${result.expected}, got ${result.actual}`);
     if (!result.valid) process.exitCode = 1;
   });
