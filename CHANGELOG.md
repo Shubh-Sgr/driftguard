@@ -4,6 +4,8 @@ All notable changes to PgVouch. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-30
+
 ### Changed
 - **Renamed from DriftGuard to PgVouch** (the npm name `driftguard` belongs to an unrelated project). Breaking for existing setups: the CLI is now `pgvouch`, environment variables are `PGVOUCH_*` (was `DRIFTGUARD_*`), the demo read-only role is `pgvouch_ro`, the MCP server name is `pgvouch`, and the Docker image is `ghcr.io/<owner>/pgvouch`. Recreate the demo databases with `npm run db:down && npm run db:up`.
 - **License changed from MIT to Apache 2.0**, which adds an explicit patent grant from contributors. A `NOTICE` file ships with the npm package and the Docker image.
@@ -40,6 +42,7 @@ All notable changes to PgVouch. The format follows [Keep a Changelog](https://ke
 
 First public release: schema introspection and drift detection, chunked checksum verification with bisection to the exact differing rows, lock-impact analysis, safe rewrites, a guarded LLM planner with a rules-only fallback, shadow runs, reversibility tags, hashed receipts, an MCP server with 6 read-only tools, and an eval suite.
 
-[Unreleased]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Shubh-Sgr/pgvouch/releases/tag/v0.1.0
