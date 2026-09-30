@@ -92,20 +92,73 @@ flowchart LR
 | F13 | Lock-queue preflight | "Safe to run right now?": the locks each statement needs vs. live `pg_locks` + `pg_stat_activity`, using Postgres' full 8×8 lock conflict table |
 | F14 | PR review action | `pgvouch review --format markdown` + a GitHub Action: lock analysis and safe rewrites of changed migrations as a job summary and one PR comment |
 
-## Install
+## Get started
 
-Requirements: Node 22 (or 20.12+).
+There are two ways to use PgVouch:
+
+| | **Option A: npm package** | **Option B: clone the repo** |
+|---|---|---|
+| Best for | Your own databases, CI, or an AI assistant | Trying every feature on seeded demo databases, or contributing |
+| Needs | Node 22 (or 20.12+) | Node 22 (or 20.12+) and Docker |
+| Commands run as | `pgvouch <command>` (or `npx pgvouch <command>`) | `npm run cli -- <command>` |
+
+### Option A: use the npm package
+
+**1. Try it now, no database needed.** Point it at any migration file:
 
 ```bash
-npm install -g pgvouch   # or skip the install and run any command as: npx pgvouch <command>
+npx pgvouch locks my_migration.sql --offline     # the locks each statement takes, and the risk
+npx pgvouch rewrite my_migration.sql --offline   # a safe, non-blocking version of the same migration
+```
+
+No migration file handy? Create one: `echo "CREATE INDEX idx_amount ON transactions (amount);" > my_migration.sql`
+
+**2. Install it** (optional: `npx pgvouch <command>` works without installing):
+
+```bash
+npm install -g pgvouch
 pgvouch --help
 ```
 
-The CLI reads `SOURCE_DATABASE_URL` and `TARGET_DATABASE_URL` from the environment, or from a `.env` file in the current folder. To point it at your own databases, see [Use it on your own databases](#use-it-on-your-own-databases).
+**3. Point it at your databases.** Create a read-only role on each database ([the SQL is here](#use-it-on-your-own-databases)), then put a `.env` file in the folder you run PgVouch from:
 
-## Quickstart (local, zero cost)
+```bash
+SOURCE_DATABASE_URL=postgres://pgvouch_ro:PASSWORD@staging-host:5432/your_db
+TARGET_DATABASE_URL=postgres://pgvouch_ro:PASSWORD@prod-host:5432/your_db
+PGVOUCH_LLM=none   # rules-only plans; set it to ollama to let a local LLM propose plans
+```
 
-To try every feature without touching a real database, clone the repo: it includes two seeded demo databases. Requirements: Node 22 (or 20.12+) and Docker.
+Variables already set in your environment take precedence over `.env`. Then check that both connections are read-only:
+
+```bash
+pgvouch doctor   # must say read_only=true and write privileges: none
+```
+
+**4. Run it:**
+
+```bash
+pgvouch diff                                      # schema drift (exit code 1 if any)
+pgvouch verify --rows                             # checksums + exact differing rows
+pgvouch locks my_migration.sql                    # lock impact per statement, with real table sizes
+pgvouch preflight my_migration.sql                # would it have to wait for locks RIGHT NOW?
+pgvouch rewrite my_migration.sql                  # safe multi-step script
+pgvouch review --format markdown migrations/*.sql # PR-comment report (offline, used by the GitHub Action)
+pgvouch plan --no-llm                             # rules-only plan that makes target match source
+pgvouch plan                                      # LLM plan (Ollama) behind guardrails
+pgvouch shadow                                    # plan, then prove it on a throwaway container (needs Docker)
+pgvouch receipt --shadow                          # hashed audit record
+pgvouch receipt-verify pgvouch-receipt.json
+```
+
+`locks --fail-on high` exits with code 1, so it can gate a CI pipeline on risky migrations.
+
+`preflight` answers a different question: not "what will this lock?" but "is anyone holding or waiting for a conflicting lock right now?". It lists the sessions it would queue behind (pid, user, application, state, transaction age; never their query text), and flags that `CREATE INDEX CONCURRENTLY` waits for every older transaction in the database. It exits with code 1 if the migration would wait. PgVouch never terminates sessions.
+
+**5. Also:** use it [from an AI assistant](#use-it-from-an-ai-assistant-mcp) (`npx -y pgvouch mcp`), or review every migration pull request with the [GitHub Action](#use-it-on-your-own-databases) (step 4 there).
+
+### Option B: clone the repo (demo databases included)
+
+The repo includes two seeded Postgres databases, so you can try every feature without touching a real database. Requirements: Node 22 (or 20.12+) and Docker.
 
 ```bash
 git clone https://github.com/Shubh-Sgr/pgvouch.git && cd pgvouch
@@ -115,24 +168,16 @@ npm run db:up          # two Postgres 16 containers, seeded: ~3 min on first sta
 npm run cli -- doctor  # confirms both connections are read-only
 ```
 
-Inside the repo, `npm run cli -- <command>` runs the same CLI as an installed `pgvouch <command>`.
-
 | Container | Port | Contents |
 |---|---|---|
 | `source-db` | 5433 | Fintech schema, 10 tables: 1M `transactions`, 2M `ledger_entries`, composite-PK and no-PK tables |
 | `target-db` | 5434 | Identical copy. Eval scenarios create drift in scratch copies of it. |
 
-### Running on an 8 GB laptop
+Then follow [Step-by-step: test every feature](#step-by-step-test-every-feature) below: you break the target on purpose and watch each feature find and fix it.
 
-PgVouch was built and measured on an 8 GB MacBook Air (M1). It stays responsive if you:
+#### Commands from a clone
 
-- Give Docker Desktop **3 GB** of memory (Settings → Resources). The two databases are capped at 768 MB each in `docker-compose.yml`, and shadow containers at 256 MB.
-- Run one heavy thing at a time: `db:up`, integration tests, and evals each create or scan millions of rows.
-- Use `PGVOUCH_LLM=none` unless you need the LLM planner. When it's used, Ollama unloads the model 30 s after the last request.
-- Skip `npm run eval -- --llm ...` (~1 hour on a 3B model) unless you want those numbers; the default eval doesn't call an LLM.
-- Want an even lighter setup? Seed fewer rows: `npm run db:down && SEED_TRANSACTIONS=100000 npm run db:up` (seconds instead of ~3 min). CI uses 20,000. The published eval numbers and `npm run eval` need the default 1,000,000.
-
-### CLI
+Every command from Option A works here as `npm run cli -- <command>`. These use the example migration in the repo:
 
 ```bash
 npm run cli -- diff                                   # schema drift (exit code 1 if any)
@@ -148,13 +193,19 @@ npm run cli -- receipt --shadow                       # hashed audit record
 npm run cli -- receipt-verify pgvouch-receipt.json
 ```
 
-`locks --fail-on high` exits with code 1, so it can gate a CI pipeline on risky migrations.
+#### Running on an 8 GB laptop
 
-`preflight` answers a different question: not "what will this lock?" but "is anyone holding or waiting for a conflicting lock right now?". It lists the sessions it would queue behind (pid, user, application, state, transaction age; never their query text), and flags that `CREATE INDEX CONCURRENTLY` waits for every older transaction in the database. It exits with code 1 if the migration would wait. PgVouch never terminates sessions.
+PgVouch was built and measured on an 8 GB MacBook Air (M1). It stays responsive if you:
+
+- Give Docker Desktop **3 GB** of memory (Settings → Resources). The two databases are capped at 768 MB each in `docker-compose.yml`, and shadow containers at 256 MB.
+- Run one heavy thing at a time: `db:up`, integration tests, and evals each create or scan millions of rows.
+- Use `PGVOUCH_LLM=none` unless you need the LLM planner. When it's used, Ollama unloads the model 30 s after the last request.
+- Skip `npm run eval -- --llm ...` (~1 hour on a 3B model) unless you want those numbers; the default eval doesn't call an LLM.
+- Want an even lighter setup? Seed fewer rows: `npm run db:down && SEED_TRANSACTIONS=100000 npm run db:up` (seconds instead of ~3 min). CI uses 20,000. The published eval numbers and `npm run eval` need the default 1,000,000.
 
 ## Step-by-step: test every feature
 
-This walkthrough uses the two demo databases from the Quickstart. You break the target on purpose, then watch each feature find and fix it.
+This walkthrough uses the two demo databases from [Option B](#option-b-clone-the-repo-demo-databases-included). You break the target on purpose, then watch each feature find and fix it.
 Run the commands one at a time from the `pgvouch` folder. **Want it automatic?** `npm run demo` runs steps 1–9 with pauses and repairs the target at the end.
 
 > macOS: if a command fails with `Operation not permitted` / `EPERM uv_cwd`, give your terminal access to the folder: System Settings → Privacy & Security → Files and Folders → (your terminal) → Documents.
@@ -355,7 +406,7 @@ TARGET_DATABASE_URL=postgres://pgvouch_ro:PASSWORD@prod-host:5432/your_db
 PGVOUCH_LLM=none
 ```
 
-Then, from that folder, `pgvouch doctor` must say `read_only=true` and `write privileges: none` before you run anything else. For huge tables, run `verify` against a read replica.
+Then, from that folder, `pgvouch doctor` (or `npm run cli -- doctor` in a clone) must say `read_only=true` and `write privileges: none` before you run anything else. For huge tables, run `verify` against a read replica.
 
 **4. Gate migrations in CI.** No database is needed with `--offline`:
 
@@ -379,7 +430,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: Shubh-Sgr/pgvouch@v0.3.1 # or pin the release's commit SHA
+      - uses: Shubh-Sgr/pgvouch@v0.3.2 # or pin the release's commit SHA
         with:
           paths: migrations/**/*.sql     # one glob per line
           fail-on: high                  # optional: fail the check at this risk

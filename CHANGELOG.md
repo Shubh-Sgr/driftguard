@@ -4,6 +4,11 @@ All notable changes to PgVouch. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-09-30
+
+### Changed
+- **README: a "Get started" section with two clear paths.** Option A uses the npm package: try it on a migration file with no database, install, point it at your databases, then the full command list as `pgvouch <command>`. Option B clones the repo for the seeded demo databases and the step-by-step walkthrough. No code changes.
+
 ## [0.3.1] - 2026-09-30
 
 ### Added
@@ -48,7 +53,8 @@ All notable changes to PgVouch. The format follows [Keep a Changelog](https://ke
 
 First public release: schema introspection and drift detection, chunked checksum verification with bisection to the exact differing rows, lock-impact analysis, safe rewrites, a guarded LLM planner with a rules-only fallback, shadow runs, reversibility tags, hashed receipts, an MCP server with 6 read-only tools, and an eval suite.
 
-[Unreleased]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.1.0...v0.2.0
