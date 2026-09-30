@@ -3,6 +3,7 @@ import { analyzeParsed, type StatementAnalysis } from "../locks/analyze.js";
 import { constraintName, ident, tableRef } from "../sql/ident.js";
 import { parseSql, rangeVarName, sliceBytes, stringList, type AstNode, type ParsedStatement } from "../sql/parse.js";
 import { formatTypeName } from "../sql/types.js";
+import { carryOverDependents } from "./dependents.js";
 
 export type RuleId =
   | "create_index_concurrently"
@@ -67,33 +68,34 @@ export async function rewriteMigration(sql: string, opts: RewriteOptions = {}): 
   const analysis = analyzeParsed(parsed, opts.schema);
   const ctx: Ctx = { schema: opts.schema, batchSize: opts.batchSize ?? 10_000, statementTimeout: opts.statementTimeout ?? "30min" };
 
-  const statements: StatementRewrite[] = parsed
+  const statements: StatementRewrite[] = [];
+  const kept = parsed
     // The script gets its own SET lock_timeout / statement_timeout header, so drop the
     // user's copies of those to avoid conflicting values.
     .filter((s) => !(s.type === "VariableSetStmt" && ["lock_timeout", "statement_timeout"].includes(s.node.name)))
     // Transaction control is re-decided per step (CONCURRENTLY can't run in a transaction).
-    .filter((s) => s.type !== "TransactionStmt")
-    .map((stmt) => {
-      const a = analysis.statements[stmt.index]!;
-      const r = applyRules(stmt, a, ctx);
-      const steps = r?.steps ?? [{ sql: stmt.text, transactional: a.transactional, kind: "ddl" as const }];
-      return {
-        index: stmt.index,
-        original: stmt.text,
-        rule: r?.rule ?? null,
-        steps,
-        explanation: r?.explanation ?? explainUnchanged(a),
-        needsHumanInput: steps.some((s) => s.kind === "manual" || s.sql.includes("/* TODO")),
-        analysis: a,
-      };
+    .filter((s) => s.type !== "TransactionStmt");
+  for (const stmt of kept) {
+    const a = analysis.statements[stmt.index]!;
+    const r = await applyRules(stmt, a, ctx);
+    const steps = r?.steps ?? [{ sql: stmt.text, transactional: a.transactional, kind: "ddl" as const }];
+    statements.push({
+      index: stmt.index,
+      original: stmt.text,
+      rule: r?.rule ?? null,
+      steps,
+      explanation: r?.explanation ?? explainUnchanged(a),
+      needsHumanInput: steps.some((s) => s.kind === "manual" || s.sql.includes("/* TODO")),
+      analysis: a,
     });
+  }
 
   return { statements, script: renderScript(statements, opts.lockTimeout ?? "3s", ctx.statementTimeout) };
 }
 
 type RuleResult = { rule: RuleId; steps: RewriteStep[]; explanation: string } | null;
 
-function applyRules(stmt: ParsedStatement, a: StatementAnalysis, ctx: Ctx): RuleResult {
+async function applyRules(stmt: ParsedStatement, a: StatementAnalysis, ctx: Ctx): Promise<RuleResult> {
   const n = stmt.node;
   switch (stmt.type) {
     case "IndexStmt":
@@ -176,7 +178,7 @@ function applyRules(stmt: ParsedStatement, a: StatementAnalysis, ctx: Ctx): Rule
   }
 }
 
-function alterTableRule(stmt: ParsedStatement, cmd: AstNode, a: StatementAnalysis, ctx: Ctx): RuleResult {
+async function alterTableRule(stmt: ParsedStatement, cmd: AstNode, a: StatementAnalysis, ctx: Ctx): Promise<RuleResult> {
   const key = rangeVarName(stmt.node.relation);
   const t = tableRef(key);
 
@@ -249,17 +251,30 @@ function alterTableRule(stmt: ParsedStatement, cmd: AstNode, a: StatementAnalysi
         backfillOrManual(key, `${ident(tmp)} = ${ident(col)}::${newType}`, `${ident(tmp)} IS NULL AND ${ident(col)} IS NOT NULL`, ctx),
       );
       if (current && !current.nullable) steps.push(...setNotNullSteps(key, tmp));
+      // Indexes and constraints on the column must move to the new column too, or the swap
+      // silently drops them (also found by a shadow run). Without a schema we can't know them.
+      const carried = current ? await carryOverDependents(ctx.schema!, key, col, tmp) : null;
+      if (carried) steps.push(...carried.build);
+      if (!carried || carried.manual.length > 0) {
+        const what = carried ? carried.manual.join(", ") : "indexes, constraints and foreign keys that use " + col;
+        steps.push({ sql: `-- MANUAL: re-create on ${tmp} before the swap (CONCURRENTLY / NOT VALID): ${what}`, transactional: true, kind: "manual" });
+      }
       steps.push(
-        { sql: `-- MANUAL: re-create indexes, constraints and foreign keys that use ${col} on ${tmp} (CONCURRENTLY / NOT VALID) before the swap`, transactional: true, kind: "manual" },
         { sql: `-- MANUAL: deploy code that reads ${tmp}; verify with: pgvouch verify`, transactional: true, kind: "manual" },
         {
           sql: [
+            // Explicit BEGIN/COMMIT: in autocommit each statement would commit on its own,
+            // and between the two renames the column name wouldn't exist for the app.
+            "BEGIN",
             `ALTER TABLE ${t} RENAME COLUMN ${ident(col)} TO ${ident(old)}`,
             `ALTER TABLE ${t} RENAME COLUMN ${ident(tmp)} TO ${ident(col)}`,
             // The app stops writing the old column after the swap, so it must accept NULLs.
             ...(current && !current.nullable ? [`ALTER TABLE ${t} ALTER COLUMN ${ident(old)} DROP NOT NULL`] : []),
+            ...(carried?.swap ?? []),
+            "COMMIT",
           ].join(";\n"),
-          transactional: true,
+          // It is its own transaction block, so it must not be wrapped in another one.
+          transactional: false,
           kind: "ddl",
           note: "Swap in ONE short transaction (all metadata-only).",
         },
@@ -268,7 +283,7 @@ function alterTableRule(stmt: ParsedStatement, cmd: AstNode, a: StatementAnalysi
       return {
         rule: "alter_type_expand_contract",
         steps,
-        explanation: `Changing ${col} to ${newType} rewrites the whole table and every index under ACCESS EXCLUSIVE. Expand/contract adds a new column, backfills it in batches, swaps names in an instant transaction, and drops the old column later.`,
+        explanation: `Changing ${col} to ${newType} rewrites the whole table and every index under ACCESS EXCLUSIVE. Expand/contract adds a new column, backfills it in batches, copies the column's indexes and constraints without blocking, swaps names in one instant transaction, and drops the old column later.`,
       };
     }
 
@@ -436,7 +451,9 @@ function renderScript(statements: StatementRewrite[], lockTimeout: string, state
     if (!s.rule && s.analysis.risk !== "low") lines.push(`-- ${s.explanation}`);
     for (const step of s.steps) {
       if (step.note) lines.push(`-- ${step.note}`);
-      if (!step.transactional && step.kind !== "manual") lines.push("-- (run outside a transaction block)");
+      if (!step.transactional && step.kind !== "manual") {
+        lines.push(/^BEGIN\b/i.test(step.sql) ? "-- (its own transaction block: don't wrap it in another)" : "-- (run outside a transaction block)");
+      }
       lines.push(step.kind === "manual" ? step.sql : `${step.sql.replace(/;\s*$/, "")};`);
     }
   }
@@ -447,6 +464,6 @@ function renderScript(statements: StatementRewrite[], lockTimeout: string, state
  * Would a safe-rewrite rule fire for this statement? Used by the plan validator:
  * if PgVouch knows a safer way to do it, a plan that does it the risky way is rejected.
  */
-export function unsafeRuleFor(stmt: ParsedStatement, a: StatementAnalysis, schema?: Schema): RuleId | null {
-  return applyRules(stmt, a, { schema, batchSize: 10_000, statementTimeout: "30min" })?.rule ?? null;
+export async function unsafeRuleFor(stmt: ParsedStatement, a: StatementAnalysis, schema?: Schema): Promise<RuleId | null> {
+  return (await applyRules(stmt, a, { schema, batchSize: 10_000, statementTimeout: "30min" }))?.rule ?? null;
 }

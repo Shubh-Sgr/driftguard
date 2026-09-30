@@ -1,4 +1,4 @@
-import { parse } from "libpg-query";
+import { parse, scan } from "libpg-query";
 
 // libpg-query is PostgreSQL's own parser (compiled to WebAssembly), so we get exactly
 // the syntax tree Postgres itself would build — no regex guessing about what a
@@ -40,6 +40,32 @@ export async function parseSql(sql: string): Promise<ParsedStatement[]> {
       bytes,
     };
   });
+}
+
+export interface SqlToken {
+  /** Byte offsets into the UTF-8 input (end is exclusive). */
+  start: number;
+  end: number;
+  text: string;
+  /** The name if this token is an identifier (quotes removed, case-folded like Postgres), else null. */
+  ident: string | null;
+}
+
+/**
+ * Splits SQL into tokens with Postgres' own scanner. Used to rename one identifier in a
+ * catalog definition without touching string literals, comments or other names.
+ */
+export async function scanSql(sql: string): Promise<SqlToken[]> {
+  const { tokens } = await scan(sql);
+  return tokens.map((t: AstNode) => ({
+    start: t.start,
+    end: t.end,
+    text: t.text,
+    // Unreserved keywords (name, type, action, ...) are valid unquoted identifiers.
+    ident: t.tokenName === "IDENT" || t.keywordName === "UNRESERVED_KEYWORD"
+      ? (t.text.startsWith('"') ? t.text.slice(1, -1).replace(/""/g, '"') : t.text.toLowerCase())
+      : null,
+  }));
 }
 
 /** Text between two byte offsets of the original input (AST locations are bytes, not chars). */

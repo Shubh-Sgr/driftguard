@@ -20,7 +20,8 @@ export function renderPlanSql(plan: MigrationPlan, opts: RenderOptions = {}): st
 
   plan.steps.forEach((step, i) => {
     lines.push("", `-- Step ${i + 1}: ${step.title}`);
-    lines.push(`--   risk=${step.risk}, ${step.reversibility}${step.transactional ? "" : ", outside a transaction"}${step.phase === "contract" ? ", CONTRACT phase" : ""}`);
+    const txn = step.transactional ? "" : /^BEGIN\b/i.test(step.sql) ? ", its own transaction" : ", outside a transaction";
+    lines.push(`--   risk=${step.risk}, ${step.reversibility}${txn}${step.phase === "contract" ? ", CONTRACT phase" : ""}`);
     if (step.rollbackSql) lines.push(`--   rollback: ${step.rollbackSql.replace(/\n/g, " ")}`);
 
     const sql = step.manual ? step.sql : `${step.sql.replace(/;\s*$/, "")};`;

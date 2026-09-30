@@ -92,7 +92,80 @@ describe("safe-rewrite engine (F6)", () => {
   it("ALTER COLUMN TYPE with a rewrite -> expand/contract with manual deploy steps", async () => {
     const [s] = (await rewrite("ALTER TABLE transactions ALTER COLUMN merchant_id TYPE bigint")).statements;
     expect(s!.rule).toBe("alter_type_expand_contract");
-    expect(s!.steps.filter((x) => x.kind === "manual")).toHaveLength(4);
+    // Dual-write deploy, read deploy, contract. Nothing uses merchant_id, so nothing to re-create.
+    expect(s!.steps.filter((x) => x.kind === "manual")).toHaveLength(3);
+  });
+
+  it("ALTER COLUMN TYPE without a schema keeps a manual step for indexes and constraints", async () => {
+    const [s] = (await rewriteMigration("ALTER TABLE transactions ALTER COLUMN merchant_id TYPE bigint")).statements;
+    expect(s!.steps.map((x) => x.sql)).toContain("-- MANUAL: re-create on merchant_id_new before the swap (CONCURRENTLY / NOT VALID): indexes, constraints and foreign keys that use merchant_id");
+  });
+
+  it("swaps the columns inside one explicit transaction (no moment where the column is missing)", async () => {
+    const [s] = (await rewrite("ALTER TABLE transactions ALTER COLUMN merchant_id TYPE bigint")).statements;
+    const swap = s!.steps.find((x) => x.sql.includes("RENAME COLUMN merchant_id TO merchant_id_old"))!;
+    expect(swap.sql.split(";\n")).toEqual([
+      "BEGIN",
+      "ALTER TABLE transactions RENAME COLUMN merchant_id TO merchant_id_old",
+      "ALTER TABLE transactions RENAME COLUMN merchant_id_new TO merchant_id",
+      "COMMIT",
+    ]);
+    expect(swap.transactional).toBe(false);
+  });
+
+  it("carries the column's FK, CHECK, UNIQUE and indexes over to the new column (regression found by shadow runs)", async () => {
+    const withDeps = structuredClone(db);
+    const tx = withDeps.tables["public.transactions"]!;
+    tx.constraints = {
+      transactions_merchant_id_fkey: { name: "transactions_merchant_id_fkey", type: "foreign_key", definition: "FOREIGN KEY (merchant_id) REFERENCES merchants(id)", validated: true },
+      // The string literal 'merchant_id' must NOT be renamed, only the column reference.
+      merchant_positive: { name: "merchant_positive", type: "check", definition: "CHECK (((merchant_id > 0) AND (note <> 'merchant_id'::text)))", validated: true },
+      transactions_merchant_uq: { name: "transactions_merchant_uq", type: "unique", definition: "UNIQUE (merchant_id, note)", validated: true },
+    };
+    tx.indexes = {
+      transactions_merchant_uq: { name: "transactions_merchant_uq", definition: "CREATE UNIQUE INDEX transactions_merchant_uq ON public.transactions USING btree (merchant_id, note)", unique: true, primary: false, valid: true },
+      transactions_merchant_idx: { name: "transactions_merchant_idx", definition: "CREATE INDEX transactions_merchant_idx ON public.transactions USING btree (merchant_id) WHERE (merchant_id IS NOT NULL)", unique: false, primary: false, valid: true },
+      transactions_note_idx: { name: "transactions_note_idx", definition: "CREATE INDEX transactions_note_idx ON public.transactions USING btree (note)", unique: false, primary: false, valid: true },
+    };
+    const [s] = (await rewriteMigration("ALTER TABLE transactions ALTER COLUMN merchant_id TYPE bigint", { schema: withDeps })).statements;
+    const sqls = s!.steps.map((x) => x.sql);
+
+    expect(sqls).toEqual(expect.arrayContaining([
+      "ALTER TABLE transactions ADD CONSTRAINT merchant_positive_new CHECK (((merchant_id_new > 0) AND (note <> 'merchant_id'::text))) NOT VALID",
+      "ALTER TABLE transactions VALIDATE CONSTRAINT merchant_positive_new",
+      "ALTER TABLE transactions ADD CONSTRAINT transactions_merchant_id_fkey_new FOREIGN KEY (merchant_id_new) REFERENCES merchants(id) NOT VALID",
+      "ALTER TABLE transactions VALIDATE CONSTRAINT transactions_merchant_id_fkey_new",
+      "CREATE UNIQUE INDEX CONCURRENTLY transactions_merchant_uq_new ON public.transactions USING btree (merchant_id_new, note)",
+      "ALTER TABLE transactions ADD CONSTRAINT transactions_merchant_uq_new UNIQUE USING INDEX transactions_merchant_uq_new",
+      "CREATE INDEX CONCURRENTLY transactions_merchant_idx_new ON public.transactions USING btree (merchant_id_new) WHERE (merchant_id_new IS NOT NULL)",
+    ]));
+    expect(sqls.join("\n")).not.toContain("transactions_note_idx"); // doesn't use the column
+    expect(sqls.some((x) => x.startsWith("-- MANUAL: re-create"))).toBe(false);
+
+    const swap = sqls.find((x) => x.startsWith("BEGIN"))!.split(";\n");
+    expect(swap.slice(3)).toEqual([
+      "ALTER TABLE transactions DROP CONSTRAINT merchant_positive",
+      "ALTER TABLE transactions RENAME CONSTRAINT merchant_positive_new TO merchant_positive",
+      "ALTER TABLE transactions DROP CONSTRAINT transactions_merchant_id_fkey",
+      "ALTER TABLE transactions RENAME CONSTRAINT transactions_merchant_id_fkey_new TO transactions_merchant_id_fkey",
+      "ALTER TABLE transactions DROP CONSTRAINT transactions_merchant_uq",
+      "ALTER TABLE transactions RENAME CONSTRAINT transactions_merchant_uq_new TO transactions_merchant_uq",
+      "DROP INDEX transactions_merchant_idx",
+      "ALTER INDEX transactions_merchant_idx_new RENAME TO transactions_merchant_idx",
+      "COMMIT",
+    ]);
+  });
+
+  it("leaves the primary key and other tables' foreign keys to a human", async () => {
+    const withFk = structuredClone(db);
+    withFk.tables["public.accounts"]!.constraints = { accounts_pkey: { name: "accounts_pkey", type: "primary_key", definition: "PRIMARY KEY (id)", validated: true } };
+    withFk.tables["public.transactions"]!.constraints = {
+      transactions_account_fk: { name: "transactions_account_fk", type: "foreign_key", definition: "FOREIGN KEY (merchant_id) REFERENCES accounts(id)", validated: true },
+    };
+    const [s] = (await rewriteMigration("ALTER TABLE accounts ALTER COLUMN id TYPE integer", { schema: withFk })).statements;
+    expect(s!.steps.map((x) => x.sql)).toContain(
+      "-- MANUAL: re-create on id_new before the swap (CONCURRENTLY / NOT VALID): primary key accounts_pkey, foreign key public.transactions.transactions_account_fk (references this column)",
+    );
   });
 
   it("keeps the old column's DEFAULT and NOT NULL on the new column (regression found by shadow runs)", async () => {

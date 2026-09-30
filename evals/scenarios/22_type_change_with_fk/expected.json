@@ -1,0 +1,6 @@
+{
+  "description": "Type change on a column that has a foreign key (merchant_id -> merchants)",
+  "drift": [
+    "column_type_changed:public.transactions.merchant_id"
+  ]
+}

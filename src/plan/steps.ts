@@ -58,7 +58,8 @@ export async function finalizeSteps(raw: RawStep[], target: Schema): Promise<Pla
     const manual = stmts.length === 0; // comment-only step: an action for a human
     // Our generated backfill loop (a DO block) only fills NULLs in a column this plan
     // added, so dropping that column undoes it. Anything else is classified statement by statement.
-    const rev = step.backfill ? [] : stmts.map((s) => classifyReversibility(s, target));
+    // BEGIN/COMMIT around a step (the type-change swap) change nothing themselves.
+    const rev = step.backfill ? [] : stmts.filter((s) => s.type !== "TransactionStmt").map((s) => classifyReversibility(s, target));
     const dataLossy = rev.some((r) => r.reversibility === "data-lossy");
     return {
       title: step.title,
@@ -67,8 +68,9 @@ export async function finalizeSteps(raw: RawStep[], target: Schema): Promise<Pla
       risk: maxRisk(analyses.map((a) => a.risk)),
       reversibility: manual ? "unknown" : worstReversibility(rev.map((r) => r.reversibility)),
       rollbackSql: !manual && rev.length > 0 && rev.every((r) => r.rollbackSql) ? [...rev].reverse().map((r) => r.rollbackSql).join(";\n") : null,
-      // A step containing COMMIT (our batch loop) can't be wrapped in a transaction either.
-      transactional: analyses.every((a) => a.transactional) && !/\bCOMMIT;/.test(step.sql),
+      // A step that COMMITs (our batch loop) or is its own BEGIN...COMMIT block (the
+      // type-change swap) can't be wrapped in another transaction.
+      transactional: analyses.every((a) => a.transactional) && !/\bCOMMIT;/.test(step.sql) && !stmts.some((s) => s.type === "TransactionStmt"),
       phase: dataLossy || /^-- CONTRACT/.test(step.sql) ? "contract" : "expand",
       manual,
     };
