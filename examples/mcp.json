@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "pgvouch": {
-      "command": "node",
-      "args": ["/absolute/path/to/pgvouch/dist/cli/index.js", "mcp"],
+      "command": "npx",
+      "args": ["-y", "pgvouch", "mcp"],
       "env": {
         "SOURCE_DATABASE_URL": "postgres://pgvouch_ro:pgvouch_ro_local@localhost:5433/fintech",
         "TARGET_DATABASE_URL": "postgres://pgvouch_ro:pgvouch_ro_local@localhost:5434/fintech",

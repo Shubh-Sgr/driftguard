@@ -18,9 +18,23 @@ const program = new Command()
   .description("Safe PostgreSQL migrations: detect drift, predict locks, rewrite risky DDL, verify data.")
   .version(VERSION);
 
+/**
+ * Config for CLI commands: reads ./.env when there is one, so an installed `pgvouch` works like
+ * `npm run cli`. Variables already set in the environment win. The MCP server doesn't do this:
+ * its settings come only from the MCP client config.
+ */
+function cliConfig() {
+  try {
+    process.loadEnvFile();
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+  return loadConfig();
+}
+
 /** Opens both read-only connections for one command and always closes them. */
 async function withPgVouch<T>(fn: (dg: PgVouch) => Promise<T>): Promise<T> {
-  const dg = new PgVouch(loadConfig());
+  const dg = new PgVouch(cliConfig());
   try {
     return await fn(dg);
   } finally {

@@ -1,6 +1,6 @@
 {
   "name": "pgvouch",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "MCP server + CLI for safe PostgreSQL migrations: drift detection, lock analysis, safe rewrites, checksum verification.",
   "license": "Apache-2.0",
   "type": "module",
@@ -16,6 +16,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run typecheck && npm test && node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && npm run build",
     "typecheck": "tsc --noEmit",
     "cli": "tsx --env-file=.env src/cli/index.ts",
     "test": "vitest run tests/unit",
@@ -56,6 +57,5 @@
     "schema-drift",
     "zero-downtime",
     "cli"
-  ],
-  "private": true
+  ]
 }

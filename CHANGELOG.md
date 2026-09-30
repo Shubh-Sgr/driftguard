@@ -4,6 +4,12 @@ All notable changes to PgVouch. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-30
+
+### Added
+- **Published on npm.** Install with `npm install -g pgvouch`, or run any command with `npx pgvouch <command>`. MCP clients can start the server with `npx -y pgvouch mcp`, so registering it no longer needs a clone and a build.
+- **The installed CLI reads `./.env`**, like `npm run cli` does. Variables already set in the environment take precedence. The MCP server still takes its settings only from the MCP client config.
+
 ## [0.3.0] - 2026-09-30
 
 ### Changed
@@ -42,7 +48,8 @@ All notable changes to PgVouch. The format follows [Keep a Changelog](https://ke
 
 First public release: schema introspection and drift detection, chunked checksum verification with bisection to the exact differing rows, lock-impact analysis, safe rewrites, a guarded LLM planner with a rules-only fallback, shadow runs, reversibility tags, hashed receipts, an MCP server with 6 read-only tools, and an eval suite.
 
-[Unreleased]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Shubh-Sgr/pgvouch/releases/tag/v0.1.0

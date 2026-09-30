@@ -92,9 +92,20 @@ flowchart LR
 | F13 | Lock-queue preflight | "Safe to run right now?": the locks each statement needs vs. live `pg_locks` + `pg_stat_activity`, using Postgres' full 8×8 lock conflict table |
 | F14 | PR review action | `pgvouch review --format markdown` + a GitHub Action: lock analysis and safe rewrites of changed migrations as a job summary and one PR comment |
 
+## Install
+
+Requirements: Node 22 (or 20.12+).
+
+```bash
+npm install -g pgvouch   # or skip the install and run any command as: npx pgvouch <command>
+pgvouch --help
+```
+
+The CLI reads `SOURCE_DATABASE_URL` and `TARGET_DATABASE_URL` from the environment, or from a `.env` file in the current folder. To point it at your own databases, see [Use it on your own databases](#use-it-on-your-own-databases).
+
 ## Quickstart (local, zero cost)
 
-Requirements: Node 22 (or 20.12+) and Docker.
+To try every feature without touching a real database, clone the repo: it includes two seeded demo databases. Requirements: Node 22 (or 20.12+) and Docker.
 
 ```bash
 git clone https://github.com/Shubh-Sgr/pgvouch.git && cd pgvouch
@@ -103,6 +114,8 @@ cp .env.example .env
 npm run db:up          # two Postgres 16 containers, seeded: ~3 min on first start
 npm run cli -- doctor  # confirms both connections are read-only
 ```
+
+Inside the repo, `npm run cli -- <command>` runs the same CLI as an installed `pgvouch <command>`.
 
 | Container | Port | Contents |
 |---|---|---|
@@ -245,17 +258,16 @@ npm run db:down && npm run db:up   # fresh, identical databases again (~3 min)
 
 [MCP](https://modelcontextprotocol.io) (Model Context Protocol) is the standard way AI assistants call external tools. PgVouch runs as a local MCP server: the assistant (Claude Code, Cursor, …) starts it as a child process and talks to it over stdin/stdout. You then ask questions in plain English, and the assistant decides which PgVouch tools to call.
 
-### Step 1: build it and make sure the databases are up
+### Step 1: make sure the databases are up
 
 ```bash
-npm install && npm run build   # creates dist/cli/index.js, the file the assistant will run
-npm run db:up                  # or use your own databases (see "Use it on your own databases")
-npm run cli -- doctor          # both connections must say read_only=true
+npm run db:up          # in the repo; or use your own databases (see "Use it on your own databases")
+npm run cli -- doctor  # both connections must say read_only=true
 ```
 
 ### Step 2: register the server
 
-Pick **one** option. Replace `/absolute/path/to/pgvouch` with the real folder path (run `pwd` inside it).
+Pick **one** option. `npx -y pgvouch mcp` downloads and starts the published package, so you don't need a clone for this step.
 
 **Claude Code (terminal or desktop app).** One command, run in any terminal where the `claude` CLI is installed:
 
@@ -264,12 +276,12 @@ claude mcp add pgvouch \
   -e SOURCE_DATABASE_URL=postgres://pgvouch_ro:pgvouch_ro_local@localhost:5433/fintech \
   -e TARGET_DATABASE_URL=postgres://pgvouch_ro:pgvouch_ro_local@localhost:5434/fintech \
   -e PGVOUCH_LLM=none \
-  -- node /absolute/path/to/pgvouch/dist/cli/index.js mcp
+  -- npx -y pgvouch mcp
 ```
 
-Add `--scope project` to store it in the project's `.mcp.json` (shared with your team through git) instead of only for you.
+Add `--scope project` to store it in the project's `.mcp.json` (shared with your team through git) instead of only for you. To run your local clone instead (after `npm run build`), replace `npx -y pgvouch mcp` with `node /absolute/path/to/pgvouch/dist/cli/index.js mcp`.
 
-**Or a config file.** Works for Claude Code (`.mcp.json` in your project root) and **Cursor** (`.cursor/mcp.json` in the project, or `~/.cursor/mcp.json` for all projects). Copy [examples/mcp.json](examples/mcp.json) there and fix the path.
+**Or a config file.** Works for Claude Code (`.mcp.json` in your project root) and **Cursor** (`.cursor/mcp.json` in the project, or `~/.cursor/mcp.json` for all projects). Copy [examples/mcp.json](examples/mcp.json) there.
 
 **Or Docker, no Node needed.** Use [examples/mcp-docker.json](examples/mcp-docker.json). Inside a container `localhost` is the container itself, so the URLs use `host.docker.internal` to reach databases on your machine. Build the image once from the repo folder: `docker build -t pgvouch .`
 
@@ -301,8 +313,8 @@ A typical agentic flow: *"Check target for drift, explain the risky items, and g
 
 | Symptom | Fix |
 |---|---|
-| Server shows "failed" / not connected | Start it yourself with the same settings: `SOURCE_DATABASE_URL=... TARGET_DATABASE_URL=... node /absolute/path/to/pgvouch/dist/cli/index.js mcp`. It should print `pgvouch MCP server ... ready on stdio` (then Ctrl-C). A config error names the missing variable. (The server doesn't read `.env`; the variables must come from the MCP config.) |
-| `Cannot find module .../dist/cli/index.js` | Run `npm run build`, and check the path is absolute. |
+| Server shows "failed" / not connected | Start it yourself with the same settings: `SOURCE_DATABASE_URL=... TARGET_DATABASE_URL=... npx -y pgvouch mcp`. It should print `pgvouch MCP server ... ready on stdio` (then Ctrl-C). A config error names the missing variable. (The server doesn't read `.env`; the variables must come from the MCP config.) |
+| `Cannot find module .../dist/cli/index.js` (local clone) | Run `npm run build`, and check the path is absolute. |
 | Tools fail with `ECONNREFUSED` / `Connection terminated` | The databases aren't running or are still seeding. Run `npm run db:up` and wait for `Healthy`. |
 | Docker variant can't reach the databases | Use `host.docker.internal` instead of `localhost` in the URLs. |
 | `EPERM` / "Operation not permitted" on macOS | Give the app that launches the server (your terminal / Cursor) access to the folder: System Settings → Privacy & Security → Files and Folders. |
@@ -343,12 +355,12 @@ TARGET_DATABASE_URL=postgres://pgvouch_ro:PASSWORD@prod-host:5432/your_db
 PGVOUCH_LLM=none
 ```
 
-Then `npm run cli -- doctor` must say `read_only=true` and `write privileges: none` before you run anything else. For huge tables, run `verify` against a read replica.
+Then, from that folder, `pgvouch doctor` must say `read_only=true` and `write privileges: none` before you run anything else. For huge tables, run `verify` against a read replica.
 
 **4. Gate migrations in CI.** No database is needed with `--offline`:
 
 ```bash
-npx tsx src/cli/index.ts locks migrations/0042_add_index.sql --offline --fail-on high
+npx pgvouch locks migrations/0042_add_index.sql --offline --fail-on high
 ```
 
 **Or review every migration pull request with the GitHub Action.** It analyzes the migration files a PR adds or changes (offline: no database, no secrets), writes the lock analysis and the suggested safe rewrite to the job summary, and posts one PR comment that it updates on later pushes:
@@ -367,13 +379,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: Shubh-Sgr/pgvouch@v0.3.0 # or pin the release's commit SHA
+      - uses: Shubh-Sgr/pgvouch@v0.3.1 # or pin the release's commit SHA
         with:
           paths: migrations/**/*.sql     # one glob per line
           fail-on: high                  # optional: fail the check at this risk
 ```
 
-Or run the same report locally: `npm run cli -- review --format markdown migrations/*.sql`. Untrusted text from the PR (file names, identifiers) is escaped, SQL goes inside a code fence longer than any backtick run in it, and the comment is capped below GitHub's size limit. This repo runs the action on itself for PRs that touch `examples/**/*.sql` ([migration-review.yml](.github/workflows/migration-review.yml)).
+Or run the same report locally: `pgvouch review --format markdown migrations/*.sql`. Untrusted text from the PR (file names, identifiers) is escaped, SQL goes inside a code fence longer than any backtick run in it, and the comment is capped below GitHub's size limit. This repo runs the action on itself for PRs that touch `examples/**/*.sql` ([migration-review.yml](.github/workflows/migration-review.yml)).
 
 **5. Or run it with Docker** (no Node install): build once with `docker build -t pgvouch .`, then `docker run -i --rm --env-file .env pgvouch diff`. Any CLI command works in place of `diff`; with no command it starts the MCP server. `shadow` needs a Docker daemon, so run it from the CLI instead.
 
