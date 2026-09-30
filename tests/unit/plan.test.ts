@@ -81,6 +81,21 @@ describe("guardrail validator", () => {
     ]);
   });
 
+  it("only allows DROP INDEX and DROP TABLE, not DROP SCHEMA / VIEW / FUNCTION", async () => {
+    const r = await validatePlanSql([
+      { sql: "DROP SCHEMA public CASCADE" },
+      { sql: "DROP VIEW v" },
+      { sql: "DROP FUNCTION f()" },
+      { sql: "DROP INDEX CONCURRENTLY IF EXISTS accounts_region_idx" },
+      { sql: "DROP TABLE IF EXISTS old_stuff" },
+    ], target);
+    expect(r.errors).toEqual([
+      "step 1: DROP SCHEMA is not allowed in a migration plan",
+      "step 2: DROP VIEW is not allowed in a migration plan",
+      "step 3: DROP FUNCTION is not allowed in a migration plan",
+    ]);
+  });
+
   it("reports SQL that doesn't parse", async () => {
     const r = await validatePlanSql([{ sql: "ALTER TABLE accounts ADD COLUM x int" }], target);
     expect(r.errors[0]).toMatch(/does not parse/);

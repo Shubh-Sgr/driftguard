@@ -56,6 +56,12 @@ export async function validatePlanSql(steps: { sql: string }[], target: Schema):
         errors.push(`${where}: only SET lock_timeout / statement_timeout are allowed`);
         continue;
       }
+      // DropStmt also covers DROP SCHEMA / VIEW / FUNCTION / TYPE ... CASCADE, which the
+      // world model below can't check. A plan only ever needs to drop indexes and tables.
+      if (stmt.type === "DropStmt" && !["OBJECT_INDEX", "OBJECT_TABLE"].includes(stmt.node.removeType)) {
+        errors.push(`${where}: DROP ${String(stmt.node.removeType).replace("OBJECT_", "")} is not allowed in a migration plan`);
+        continue;
+      }
       if (stmt.type === "UpdateStmt" && !stmt.node.whereClause) {
         errors.push(`${where}: UPDATE without WHERE is not allowed; backfill in primary-key ranges`);
         continue; // already rejected; don't report it again in the safety check below
@@ -69,7 +75,7 @@ export async function validatePlanSql(steps: { sql: string }[], target: Schema):
   // lock_timeout), so e.g. SET NOT NULL after a validated CHECK is recognised as safe.
   const analysis = analyzeParsed(all, target);
   for (const [k, stmt] of all.entries()) {
-    const rule = unsafeRuleFor(stmt, analysis.statements[k]!, target);
+    const rule = await unsafeRuleFor(stmt, analysis.statements[k]!, target);
     if (rule) errors.push(`unsafe statement "${oneLine(stmt.text)}": use the safe pattern "${rule}" instead`);
   }
 
