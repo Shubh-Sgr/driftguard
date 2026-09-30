@@ -44,4 +44,4 @@ CI runs the same checks on every pull request.
 
 Small commits with [Conventional Commit](https://www.conventionalcommits.org/) messages, e.g. `feat(locks): add rule for ALTER TABLE ... SET TABLESPACE`.
 
-By contributing, you agree that your contributions are licensed under the MIT License.
+By contributing, you agree that your contributions are licensed under the [Apache License 2.0](LICENSE) (see section 5 of the license), including its patent grant.
