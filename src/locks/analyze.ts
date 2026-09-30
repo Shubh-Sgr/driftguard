@@ -260,7 +260,7 @@ function effectOf(stmt: ParsedStatement, schema: Schema | undefined, checks: Not
     default:
       return effect(stmt.type, {
         // Unknown to our rule table: say so instead of pretending it's safe.
-        notes: [`${stmt.type} is not in DriftGuard's lock rule table; review its locking manually.`],
+        notes: [`${stmt.type} is not in PgVouch's lock rule table; review its locking manually.`],
       });
   }
 }

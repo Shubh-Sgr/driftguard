@@ -28,7 +28,7 @@ const ALLOWED = new Set([
  *  2. Only allow-listed statement types.
  *  3. Every table, column, index and constraint referenced exists in the target —
  *     or is created by an earlier step (catches hallucinated objects).
- *  4. No step does something risky that DriftGuard knows a safe rewrite for.
+ *  4. No step does something risky that PgVouch knows a safe rewrite for.
  */
 export async function validatePlanSql(steps: { sql: string }[], target: Schema): Promise<ValidationResult> {
   const errors: string[] = [];

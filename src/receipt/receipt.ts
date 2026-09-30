@@ -9,7 +9,7 @@ import { VERSION } from "../version.js";
  */
 export interface Receipt {
   receiptVersion: 1;
-  tool: { name: "driftguard"; version: string };
+  tool: { name: "pgvouch"; version: string };
   createdAt: string;
   /** Connection URLs with passwords removed. */
   databases: { source: string; target: string };
@@ -41,7 +41,7 @@ const sha256 = (text: string) => createHash("sha256").update(text, "utf8").diges
 export function createReceipt(databases: Receipt["databases"], results: Record<string, unknown>, now = new Date()): SignedReceipt {
   const receipt: Receipt = {
     receiptVersion: 1,
-    tool: { name: "driftguard", version: VERSION },
+    tool: { name: "pgvouch", version: VERSION },
     createdAt: now.toISOString(),
     databases,
     // Round-trip through JSON so the hash covers exactly what gets written to disk.

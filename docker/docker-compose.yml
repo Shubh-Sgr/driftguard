@@ -1,6 +1,6 @@
 # Two identical PostgreSQL 16 databases. Eval scenarios later mutate `target-db`
 # to create known drift; `source-db` stays as the reference.
-name: driftguard
+name: pgvouch
 
 x-postgres: &postgres
   image: postgres:16-alpine
@@ -8,7 +8,7 @@ x-postgres: &postgres
   command: ["postgres", "-c", "shared_buffers=128MB", "-c", "max_connections=40", "-c", "work_mem=8MB", "-c", "maintenance_work_mem=128MB"]
   mem_limit: 768m
   environment:
-    # Local-only superuser, used by the seed scripts and eval setup — never by DriftGuard itself.
+    # Local-only superuser, used by the seed scripts and eval setup — never by PgVouch itself.
     POSTGRES_USER: postgres
     POSTGRES_PASSWORD: postgres
     POSTGRES_DB: fintech

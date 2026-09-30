@@ -42,7 +42,7 @@ export function classifyReversibility(stmt: ParsedStatement, schema?: Schema): R
       const t = tableRef(rangeVarName(n.relation));
       if (n.renameType === "OBJECT_COLUMN") return r("reversible", `ALTER TABLE ${t} RENAME COLUMN ${ident(n.newname)} TO ${ident(n.subname)}`, "Rename back.");
       if (n.renameType === "OBJECT_TABLE") return r("reversible", `ALTER TABLE ${ident(n.newname)} RENAME TO ${ident(n.relation.relname)}`, "Rename back.");
-      return r("unknown", null, "Rename of an object type DriftGuard doesn't classify.");
+      return r("unknown", null, "Rename of an object type PgVouch doesn't classify.");
     }
 
     case "DropStmt": {

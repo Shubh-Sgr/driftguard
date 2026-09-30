@@ -7,10 +7,10 @@ export interface RenderOptions {
   allowDataLoss?: boolean;
 }
 
-/** Renders a plan as a SQL script a human reviews and runs. DriftGuard never runs it. */
+/** Renders a plan as a SQL script a human reviews and runs. PgVouch never runs it. */
 export function renderPlanSql(plan: MigrationPlan, opts: RenderOptions = {}): string {
   const lines = [
-    `-- DriftGuard migration plan (${plan.author === "llm" ? `LLM: ${plan.model}` : "rules-only"})`,
+    `-- PgVouch migration plan (${plan.author === "llm" ? `LLM: ${plan.model}` : "rules-only"})`,
     `-- ${acceptanceNote(plan)}`,
     `-- ${plan.summary}`,
     "-- Review every step. Steps marked 'outside a transaction' must not be wrapped in BEGIN/COMMIT.",
@@ -37,7 +37,7 @@ export function renderPlanSql(plan: MigrationPlan, opts: RenderOptions = {}): st
 /** One line saying how far the plan was checked, so nobody over-trusts it. */
 export function acceptanceNote(plan: MigrationPlan): string {
   if (plan.acceptedBy === "validator+shadow") return "Accepted after the guardrail validator AND a passing shadow run on a disposable copy of the target schema.";
-  if (plan.acceptedBy === "validator") return "WARNING: accepted by the guardrail validator only (DRIFTGUARD_SHADOW_VERIFY=off). It is safe but NOT proven complete; run `driftguard shadow`.";
+  if (plan.acceptedBy === "validator") return "WARNING: accepted by the guardrail validator only (PGVOUCH_SHADOW_VERIFY=off). It is safe but NOT proven complete; run `pgvouch shadow`.";
   if (plan.fellBack) return `Deterministic rules plan. The LLM plan was not used: ${plan.fallbackReason}`;
   return "Deterministic rules plan (no LLM involved).";
 }

@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
-# Guided DriftGuard demo: break the target database on purpose, watch every feature
+# Guided PgVouch demo: break the target database on purpose, watch every feature
 # find and fix the problem, then put the target back. Needs `npm run db:up` first.
 # The "damage" is done with the superuser inside the container, playing "someone else";
-# DriftGuard itself only ever connects read-only.
+# PgVouch itself only ever connects read-only.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 cli() { npx tsx --env-file=.env src/cli/index.ts "$@"; }
-target_sql() { docker exec -i driftguard-target-db-1 psql -q -U postgres -d fintech "$@"; }
+target_sql() { docker exec -i pgvouch-target-db-1 psql -q -U postgres -d fintech "$@"; }
 step() {
   printf '\n\033[1;36m━━ %s ━━\033[0m\n' "$1"
   [ -n "${2:-}" ] && printf '\033[2m%s\033[0m\n' "$2"
   sleep "${DEMO_PAUSE:-3}"
 }
-run() { printf '\033[1;33m$ driftguard %s\033[0m\n' "$*"; cli "$@" || true; }
+run() { printf '\033[1;33m$ pgvouch %s\033[0m\n' "$*"; cli "$@" || true; }
 
 restore() {
   step "Cleanup" "Putting the target back exactly as it was."
-  docker exec driftguard-source-db-1 psql -U postgres -d fintech -Atc \
+  docker exec pgvouch-source-db-1 psql -U postgres -d fintech -Atc \
     "COPY (SELECT * FROM ledger_entries WHERE id IN (777001, 777002)) TO STDOUT" |
     target_sql -c "COPY ledger_entries FROM STDIN" 2>/dev/null || true
   target_sql -c "UPDATE transactions SET amount = amount - 1 WHERE id = 424242" \
@@ -28,7 +28,7 @@ restore() {
   run diff
 }
 
-step "0. Safety check" "Both connections must be read-only before DriftGuard does anything."
+step "0. Safety check" "Both connections must be read-only before PgVouch does anything."
 run doctor
 
 step "1. Baseline" "Source and target start identical: same schema, same 3.1M rows."
@@ -66,5 +66,5 @@ step "8. F10: prove the plan works on a throwaway copy" "A disposable Postgres c
 run shadow --no-llm
 
 step "9. F12: a tamper-evident receipt"
-run receipt --no-llm --out /tmp/driftguard-demo-receipt.json
-run receipt-verify /tmp/driftguard-demo-receipt.json
+run receipt --no-llm --out /tmp/pgvouch-demo-receipt.json
+run receipt-verify /tmp/pgvouch-demo-receipt.json

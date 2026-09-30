@@ -8,5 +8,5 @@ export { SOURCE_RO_URL, TARGET_RO_URL, TARGET_ADMIN_URL } from "../../evals/lib/
 // small seed, so tests derive counts and row ids from this instead of assuming 1M.
 export const SEED_TRANSACTIONS = Number(process.env.SEED_TRANSACTIONS ?? 1_000_000);
 
-// Superuser URL for the seeded database — used ONLY by tests, never by DriftGuard code.
+// Superuser URL for the seeded database — used ONLY by tests, never by PgVouch code.
 export const SOURCE_ADMIN_URL = withDatabase(SOURCE_ADMIN_MAINTENANCE_URL, "fintech");

@@ -1,11 +1,11 @@
-# DriftGuard
+# PgVouch
 
 **An MCP server + CLI that lets AI assistants safely inspect, plan and _prove_ PostgreSQL migrations.**
 The LLM proposes; deterministic code decides.
 
-[![CI](https://github.com/Shubh-Sgr/driftguard/actions/workflows/ci.yml/badge.svg)](https://github.com/Shubh-Sgr/driftguard/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/Shubh-Sgr/pgvouch/actions/workflows/ci.yml/badge.svg)](https://github.com/Shubh-Sgr/pgvouch/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-![DriftGuard in a terminal: schema drift, the exact differing rows, the locks a migration takes, and its safe rewrite](docs/demo.gif)
+![PgVouch in a terminal: schema drift, the exact differing rows, the locks a migration takes, and its safe rewrite](docs/demo.gif)
 
 <sub>Real output against the seeded demo databases (1M transactions, 2M ledger entries) with the target broken as in [step 2 below](#step-by-step-test-every-feature). Typing is real-time; command run times are shortened (the `verify` run took 7.0 s).</sub>
 
@@ -19,7 +19,7 @@ Writing `ALTER TABLE` is the easy part of a database migration. The hard parts a
 4. **Which rows are wrong?** When proof fails, you need the exact rows, not "something in this 2M-row table".
 
 AI assistants now write migrations, but they hallucinate objects, ignore locks and can't prove anything.
-DriftGuard gives them (and you) read-only tools that answer those four questions, and it wraps every AI suggestion in deterministic checks.
+PgVouch gives them (and you) read-only tools that answer those four questions, and it wraps every AI suggestion in deterministic checks.
 
 ## Results (measured, not estimated)
 
@@ -37,7 +37,7 @@ All numbers come from `npm run eval` against the seeded Docker databases. The fu
 
 **Application stall during the migration**, measured on the 1M-row table with a probe query every ~10 ms ([evals/results-rewrite.md](evals/results-rewrite.md)):
 
-| Migration | Original: max stall | DriftGuard rewrite: max stall | Rewrite total time |
+| Migration | Original: max stall | PgVouch rewrite: max stall | Rewrite total time |
 |---|---|---|---|
 | `CREATE INDEX` | 901 ms | 37 ms | 0.91 s (same) |
 | `ADD FOREIGN KEY` (2M rows) | 612 ms | 8 ms | 0.40 s |
@@ -46,9 +46,9 @@ All numbers come from `npm run eval` against the seeded Docker databases. The fu
 | `ADD COLUMN ... NOT NULL DEFAULT gen_random_uuid()` | 6.68 s | 583 ms | 46.3 s (batched backfill) |
 | `ALTER COLUMN merchant_id TYPE bigint` | 8.90 s | 174 ms | 32.7 s (+4 manual steps) |
 
-**What the LLM numbers show:** a small local model is not reliable at migration planning. That's why DriftGuard never trusts it. The validator rejected 14/17 plans (unparseable SQL, hallucinated or duplicate objects, blocking DDL). The 3 it accepted were *safe but incomplete*, and only the shadow run caught that (e.g. a missing index and a sequence left out when re-creating a dropped table). Deterministic rules plans passed 17/17. Details: [evals/results-llm.md](evals/results-llm.md).
+**What the LLM numbers show:** a small local model is not reliable at migration planning. That's why PgVouch never trusts it. The validator rejected 14/17 plans (unparseable SQL, hallucinated or duplicate objects, blocking DDL). The 3 it accepted were *safe but incomplete*, and only the shadow run caught that (e.g. a missing index and a sequence left out when re-creating a dropped table). Deterministic rules plans passed 17/17. Details: [evals/results-llm.md](evals/results-llm.md).
 
-**What changed because of it:** those numbers were measured when the validator alone decided. Now an LLM plan is accepted only if it passes the validator **and** a shadow run whose result matches the source exactly; a shadow failure is sent back to the LLM for one retry, then DriftGuard falls back to the rules plan. So the 3 incomplete plans above would now be rejected. The LLM eval has not been re-run with the new pipeline yet, so there is no new number here.
+**What changed because of it:** those numbers were measured when the validator alone decided. Now an LLM plan is accepted only if it passes the validator **and** a shadow run whose result matches the source exactly; a shadow failure is sent back to the LLM for one retry, then PgVouch falls back to the rules plan. So the 3 incomplete plans above would now be rejected. The LLM eval has not been re-run with the new pipeline yet, so there is no new number here.
 
 The trade-off is visible: the rewrites that need a backfill take much longer in total, but the application keeps running.
 These are single runs on a laptop (Apple M1, 8 cores, Docker Desktop). Expect the absolute numbers to vary; the gap is the point.
@@ -59,7 +59,7 @@ These are single runs on a laptop (Apple M1, 8 cores, Docker Desktop). Expect th
 flowchart LR
   A["AI assistant<br/>(Claude Code, Cursor)"] -- "MCP (JSON-RPC, stdio)" --> S
   U["You (terminal)"] -- CLI --> S
-  subgraph S["DriftGuard core"]
+  subgraph S["PgVouch core"]
     I["F1 introspect<br/>pg_catalog"] --> D["F2 diff<br/>(pure function)"]
     D --> P["F7 planner<br/>LLM + guardrail validator"]
     L["F5 lock analyzer<br/>(Postgres parser)"] --> R["F6 safe rewrites"]
@@ -90,14 +90,14 @@ flowchart LR
 | F11 | Reversibility | Tags each step `reversible` / `reversible-with-backfill` / `data-lossy` and generates rollback SQL |
 | F12 | Receipts | JSON of drift + verification + plan + shadow, with a SHA-256 over canonical (sorted-key) JSON |
 | F13 | Lock-queue preflight | "Safe to run right now?": the locks each statement needs vs. live `pg_locks` + `pg_stat_activity`, using Postgres' full 8×8 lock conflict table |
-| F14 | PR review action | `driftguard review --format markdown` + a GitHub Action: lock analysis and safe rewrites of changed migrations as a job summary and one PR comment |
+| F14 | PR review action | `pgvouch review --format markdown` + a GitHub Action: lock analysis and safe rewrites of changed migrations as a job summary and one PR comment |
 
 ## Quickstart (local, zero cost)
 
 Requirements: Node 22 (or 20.12+) and Docker.
 
 ```bash
-git clone https://github.com/Shubh-Sgr/driftguard.git && cd driftguard
+git clone https://github.com/Shubh-Sgr/pgvouch.git && cd pgvouch
 npm install
 cp .env.example .env
 npm run db:up          # two Postgres 16 containers, seeded: ~3 min on first start
@@ -111,11 +111,11 @@ npm run cli -- doctor  # confirms both connections are read-only
 
 ### Running on an 8 GB laptop
 
-DriftGuard was built and measured on an 8 GB MacBook Air (M1). It stays responsive if you:
+PgVouch was built and measured on an 8 GB MacBook Air (M1). It stays responsive if you:
 
 - Give Docker Desktop **3 GB** of memory (Settings → Resources). The two databases are capped at 768 MB each in `docker-compose.yml`, and shadow containers at 256 MB.
 - Run one heavy thing at a time: `db:up`, integration tests, and evals each create or scan millions of rows.
-- Use `DRIFTGUARD_LLM=none` unless you need the LLM planner. When it's used, Ollama unloads the model 30 s after the last request.
+- Use `PGVOUCH_LLM=none` unless you need the LLM planner. When it's used, Ollama unloads the model 30 s after the last request.
 - Skip `npm run eval -- --llm ...` (~1 hour on a 3B model) unless you want those numbers; the default eval doesn't call an LLM.
 - Want an even lighter setup? Seed fewer rows: `npm run db:down && SEED_TRANSACTIONS=100000 npm run db:up` (seconds instead of ~3 min). CI uses 20,000. The published eval numbers and `npm run eval` need the default 1,000,000.
 
@@ -132,17 +132,17 @@ npm run cli -- plan --no-llm                          # rules-only plan
 npm run cli -- plan                                   # LLM plan (Ollama) behind guardrails
 npm run cli -- shadow                                 # plan, then prove it on a throwaway container
 npm run cli -- receipt --shadow                       # hashed audit record
-npm run cli -- receipt-verify driftguard-receipt.json
+npm run cli -- receipt-verify pgvouch-receipt.json
 ```
 
 `locks --fail-on high` exits with code 1, so it can gate a CI pipeline on risky migrations.
 
-`preflight` answers a different question: not "what will this lock?" but "is anyone holding or waiting for a conflicting lock right now?". It lists the sessions it would queue behind (pid, user, application, state, transaction age; never their query text), and flags that `CREATE INDEX CONCURRENTLY` waits for every older transaction in the database. It exits with code 1 if the migration would wait. DriftGuard never terminates sessions.
+`preflight` answers a different question: not "what will this lock?" but "is anyone holding or waiting for a conflicting lock right now?". It lists the sessions it would queue behind (pid, user, application, state, transaction age; never their query text), and flags that `CREATE INDEX CONCURRENTLY` waits for every older transaction in the database. It exits with code 1 if the migration would wait. PgVouch never terminates sessions.
 
 ## Step-by-step: test every feature
 
 This walkthrough uses the two demo databases from the Quickstart. You break the target on purpose, then watch each feature find and fix it.
-Run the commands one at a time from the `driftguard` folder. **Want it automatic?** `npm run demo` runs steps 1–9 with pauses and repairs the target at the end.
+Run the commands one at a time from the `pgvouch` folder. **Want it automatic?** `npm run demo` runs steps 1–9 with pauses and repairs the target at the end.
 
 > macOS: if a command fails with `Operation not permitted` / `EPERM uv_cwd`, give your terminal access to the folder: System Settings → Privacy & Security → Files and Folders → (your terminal) → Documents.
 
@@ -153,14 +153,14 @@ npm run cli -- diff      # "No schema drift: source and target match."
 npm run cli -- verify    # "IDENTICAL": 10 tables, ~3.1M rows compared by hash
 ```
 
-**2. Break the target** (this plays "someone made a mistake"; DriftGuard itself can't write)
+**2. Break the target** (this plays "someone made a mistake"; PgVouch itself can't write)
 
 ```bash
-docker exec driftguard-target-db-1 psql -U postgres -d fintech -c "DROP INDEX transactions_account_created_idx"
-docker exec driftguard-target-db-1 psql -U postgres -d fintech -c "ALTER TABLE ledger_entries DROP CONSTRAINT ledger_entries_transaction_id_fkey"
-docker exec driftguard-target-db-1 psql -U postgres -d fintech -c "ALTER TABLE customers ADD COLUMN legacy_code int"
-docker exec driftguard-target-db-1 psql -U postgres -d fintech -c "UPDATE transactions SET amount = amount + 1 WHERE id = 424242"
-docker exec driftguard-target-db-1 psql -U postgres -d fintech -c "DELETE FROM ledger_entries WHERE id IN (777001, 777002)"
+docker exec pgvouch-target-db-1 psql -U postgres -d fintech -c "DROP INDEX transactions_account_created_idx"
+docker exec pgvouch-target-db-1 psql -U postgres -d fintech -c "ALTER TABLE ledger_entries DROP CONSTRAINT ledger_entries_transaction_id_fkey"
+docker exec pgvouch-target-db-1 psql -U postgres -d fintech -c "ALTER TABLE customers ADD COLUMN legacy_code int"
+docker exec pgvouch-target-db-1 psql -U postgres -d fintech -c "UPDATE transactions SET amount = amount + 1 WHERE id = 424242"
+docker exec pgvouch-target-db-1 psql -U postgres -d fintech -c "DELETE FROM ledger_entries WHERE id IN (777001, 777002)"
 ```
 
 **3. Schema drift (F1 + F2)**
@@ -190,7 +190,7 @@ Each statement shows its lock (e.g. `SHARE ... blocks writes`), whether it scans
 Open a second terminal and leave a transaction open, like a forgotten session would:
 
 ```bash
-docker exec -it driftguard-target-db-1 psql -U postgres -d fintech
+docker exec -it pgvouch-target-db-1 psql -U postgres -d fintech
 # then, inside psql:  BEGIN; SELECT count(*) FROM accounts;   (don't COMMIT yet)
 ```
 
@@ -231,7 +231,7 @@ npm run cli -- receipt-verify receipt.json   # "OK: receipt intact"
 ```
 Edit any value in `receipt.json` and run `receipt-verify` again: it reports `MODIFIED`.
 
-**10. From an AI assistant (F8):** follow [Use it from an AI assistant (MCP)](#use-it-from-an-ai-assistant-mcp) below, then ask *"Use driftguard to find schema drift and the differing rows in ledger_entries."*
+**10. From an AI assistant (F8):** follow [Use it from an AI assistant (MCP)](#use-it-from-an-ai-assistant-mcp) below, then ask *"Use pgvouch to find schema drift and the differing rows in ledger_entries."*
 
 **11. Reset**
 
@@ -243,7 +243,7 @@ npm run db:down && npm run db:up   # fresh, identical databases again (~3 min)
 
 ## Use it from an AI assistant (MCP)
 
-[MCP](https://modelcontextprotocol.io) (Model Context Protocol) is the standard way AI assistants call external tools. DriftGuard runs as a local MCP server: the assistant (Claude Code, Cursor, …) starts it as a child process and talks to it over stdin/stdout. You then ask questions in plain English, and the assistant decides which DriftGuard tools to call.
+[MCP](https://modelcontextprotocol.io) (Model Context Protocol) is the standard way AI assistants call external tools. PgVouch runs as a local MCP server: the assistant (Claude Code, Cursor, …) starts it as a child process and talks to it over stdin/stdout. You then ask questions in plain English, and the assistant decides which PgVouch tools to call.
 
 ### Step 1: build it and make sure the databases are up
 
@@ -255,30 +255,30 @@ npm run cli -- doctor          # both connections must say read_only=true
 
 ### Step 2: register the server
 
-Pick **one** option. Replace `/absolute/path/to/driftguard` with the real folder path (run `pwd` inside it).
+Pick **one** option. Replace `/absolute/path/to/pgvouch` with the real folder path (run `pwd` inside it).
 
 **Claude Code (terminal or desktop app).** One command, run in any terminal where the `claude` CLI is installed:
 
 ```bash
-claude mcp add driftguard \
-  -e SOURCE_DATABASE_URL=postgres://driftguard_ro:driftguard_ro_local@localhost:5433/fintech \
-  -e TARGET_DATABASE_URL=postgres://driftguard_ro:driftguard_ro_local@localhost:5434/fintech \
-  -e DRIFTGUARD_LLM=none \
-  -- node /absolute/path/to/driftguard/dist/cli/index.js mcp
+claude mcp add pgvouch \
+  -e SOURCE_DATABASE_URL=postgres://pgvouch_ro:pgvouch_ro_local@localhost:5433/fintech \
+  -e TARGET_DATABASE_URL=postgres://pgvouch_ro:pgvouch_ro_local@localhost:5434/fintech \
+  -e PGVOUCH_LLM=none \
+  -- node /absolute/path/to/pgvouch/dist/cli/index.js mcp
 ```
 
 Add `--scope project` to store it in the project's `.mcp.json` (shared with your team through git) instead of only for you.
 
 **Or a config file.** Works for Claude Code (`.mcp.json` in your project root) and **Cursor** (`.cursor/mcp.json` in the project, or `~/.cursor/mcp.json` for all projects). Copy [examples/mcp.json](examples/mcp.json) there and fix the path.
 
-**Or Docker, no Node needed.** Use [examples/mcp-docker.json](examples/mcp-docker.json). Inside a container `localhost` is the container itself, so the URLs use `host.docker.internal` to reach databases on your machine. Build the image once from the repo folder: `docker build -t driftguard .`
+**Or Docker, no Node needed.** Use [examples/mcp-docker.json](examples/mcp-docker.json). Inside a container `localhost` is the container itself, so the URLs use `host.docker.internal` to reach databases on your machine. Build the image once from the repo folder: `docker build -t pgvouch .`
 
-`DRIFTGUARD_LLM=none` means `plan_migration` returns the deterministic rules-only plan. Set `ollama` to let a local model propose plans. They still have to pass the validator and a shadow run, which needs Docker on the machine running the server. Without Docker, the plan falls back to the rules plan, and the reason is included in the output.
+`PGVOUCH_LLM=none` means `plan_migration` returns the deterministic rules-only plan. Set `ollama` to let a local model propose plans. They still have to pass the validator and a shadow run, which needs Docker on the machine running the server. Without Docker, the plan falls back to the rules plan, and the reason is included in the output.
 
 ### Step 3: check it's connected
 
-- **Claude Code:** run `claude mcp list` (it should show `driftguard ... ✓ Connected`), or type `/mcp` inside a session. Start a **new** session after adding a server.
-- **Cursor:** Settings → MCP. `driftguard` should show a green dot and 7 tools. Restart Cursor after editing the file.
+- **Claude Code:** run `claude mcp list` (it should show `pgvouch ... ✓ Connected`), or type `/mcp` inside a session. Start a **new** session after adding a server.
+- **Cursor:** Settings → MCP. `pgvouch` should show a green dot and 7 tools. Restart Cursor after editing the file.
 
 ### Step 4: ask
 
@@ -301,17 +301,17 @@ A typical agentic flow: *"Check target for drift, explain the risky items, and g
 
 | Symptom | Fix |
 |---|---|
-| Server shows "failed" / not connected | Start it yourself with the same settings: `SOURCE_DATABASE_URL=... TARGET_DATABASE_URL=... node /absolute/path/to/driftguard/dist/cli/index.js mcp`. It should print `driftguard MCP server ... ready on stdio` (then Ctrl-C). A config error names the missing variable. (The server doesn't read `.env`; the variables must come from the MCP config.) |
+| Server shows "failed" / not connected | Start it yourself with the same settings: `SOURCE_DATABASE_URL=... TARGET_DATABASE_URL=... node /absolute/path/to/pgvouch/dist/cli/index.js mcp`. It should print `pgvouch MCP server ... ready on stdio` (then Ctrl-C). A config error names the missing variable. (The server doesn't read `.env`; the variables must come from the MCP config.) |
 | `Cannot find module .../dist/cli/index.js` | Run `npm run build`, and check the path is absolute. |
 | Tools fail with `ECONNREFUSED` / `Connection terminated` | The databases aren't running or are still seeding. Run `npm run db:up` and wait for `Healthy`. |
 | Docker variant can't reach the databases | Use `host.docker.internal` instead of `localhost` in the URLs. |
 | `EPERM` / "Operation not permitted" on macOS | Give the app that launches the server (your terminal / Cursor) access to the folder: System Settings → Privacy & Security → Files and Folders. |
 
-Remove it again with `claude mcp remove driftguard`, or by deleting the entry from the JSON file.
+Remove it again with `claude mcp remove pgvouch`, or by deleting the entry from the JSON file.
 
 ## Use it on your own databases
 
-The demo data is only for trying it out. To use DriftGuard for real:
+The demo data is only for trying it out. To use PgVouch for real:
 
 **1. Choose the pair of databases.** Which features make sense depends on the pair:
 
@@ -325,22 +325,22 @@ The demo data is only for trying it out. To use DriftGuard for real:
 **2. Create a read-only role** on each database (as an admin):
 
 ```sql
-CREATE ROLE driftguard_ro LOGIN PASSWORD 'choose-a-strong-password';
-ALTER ROLE driftguard_ro SET default_transaction_read_only = on;
-GRANT CONNECT ON DATABASE your_db TO driftguard_ro;
-GRANT USAGE ON SCHEMA public TO driftguard_ro;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO driftguard_ro;
+CREATE ROLE pgvouch_ro LOGIN PASSWORD 'choose-a-strong-password';
+ALTER ROLE pgvouch_ro SET default_transaction_read_only = on;
+GRANT CONNECT ON DATABASE your_db TO pgvouch_ro;
+GRANT USAGE ON SCHEMA public TO pgvouch_ro;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO pgvouch_ro;
 -- Optional, for `preflight`: see other sessions' states and transaction ages.
--- It also lets the role read their query text; DriftGuard never returns or stores it.
-GRANT pg_read_all_stats TO driftguard_ro;
+-- It also lets the role read their query text; PgVouch never returns or stores it.
+GRANT pg_read_all_stats TO pgvouch_ro;
 ```
 
-**3. Point DriftGuard at them** in `.env` (never commit this file):
+**3. Point PgVouch at them** in `.env` (never commit this file):
 
 ```bash
-SOURCE_DATABASE_URL=postgres://driftguard_ro:PASSWORD@staging-host:5432/your_db
-TARGET_DATABASE_URL=postgres://driftguard_ro:PASSWORD@prod-host:5432/your_db
-DRIFTGUARD_LLM=none
+SOURCE_DATABASE_URL=postgres://pgvouch_ro:PASSWORD@staging-host:5432/your_db
+TARGET_DATABASE_URL=postgres://pgvouch_ro:PASSWORD@prod-host:5432/your_db
+PGVOUCH_LLM=none
 ```
 
 Then `npm run cli -- doctor` must say `read_only=true` and `write privileges: none` before you run anything else. For huge tables, run `verify` against a read replica.
@@ -367,7 +367,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: Shubh-Sgr/driftguard@v0.2.0 # or pin the release's commit SHA
+      - uses: Shubh-Sgr/pgvouch@v0.2.0 # or pin the release's commit SHA
         with:
           paths: migrations/**/*.sql     # one glob per line
           fail-on: high                  # optional: fail the check at this risk
@@ -375,17 +375,17 @@ jobs:
 
 Or run the same report locally: `npm run cli -- review --format markdown migrations/*.sql`. Untrusted text from the PR (file names, identifiers) is escaped, SQL goes inside a code fence longer than any backtick run in it, and the comment is capped below GitHub's size limit. This repo runs the action on itself for PRs that touch `examples/**/*.sql` ([migration-review.yml](.github/workflows/migration-review.yml)).
 
-**5. Or run it with Docker** (no Node install): build once with `docker build -t driftguard .`, then `docker run -i --rm --env-file .env driftguard diff`. Any CLI command works in place of `diff`; with no command it starts the MCP server. `shadow` needs a Docker daemon, so run it from the CLI instead.
+**5. Or run it with Docker** (no Node install): build once with `docker build -t pgvouch .`, then `docker run -i --rm --env-file .env pgvouch diff`. Any CLI command works in place of `diff`; with no command it starts the MCP server. `shadow` needs a Docker daemon, so run it from the CLI instead.
 
 ## Safety model
 
-- **Read-only, three layers:** the `driftguard_ro` role has only `SELECT`, the role defaults to `default_transaction_read_only`, and every connection sets `default_transaction_read_only=on`, `statement_timeout` and `lock_timeout` in its startup packet. That holds even if you hand it a superuser URL; there's an integration test for exactly that.
+- **Read-only, three layers:** the `pgvouch_ro` role has only `SELECT`, the role defaults to `default_transaction_read_only`, and every connection sets `default_transaction_read_only=on`, `statement_timeout` and `lock_timeout` in its startup packet. That holds even if you hand it a superuser URL; there's an integration test for exactly that.
 - **Never loads a table into memory:** hashes are computed inside Postgres, and only 32-character digests cross the network. Bisection fetches at most 50 rows per side per leaf.
 - **Parameterized queries** for every value. Identifiers come only from the catalog, and they are quoted.
 - **Connection strings** come only from the environment, never from tool input.
 - **No row data is sent to the LLM.** The prompt contains the drift report and table shapes only. That blocks prompt injection through database contents, and your data never leaves the machine with Ollama.
-- **Shadow runs** write only to a container DriftGuard creates on `127.0.0.1` with a random password, and removes afterwards (also on Ctrl-C). Plan SQL is treated as untrusted: it runs as a non-superuser role that owns the copied schema, so `pg_read_file()` or `COPY ... PROGRAM` fail with "permission denied". Each statement has a client-side timeout the plan can't lift, and the container is capped at 256 MB, 1 CPU and 256 processes.
-- **LLM plans are proven, not trusted:** a plan is accepted only after the validator and a shadow run both pass (`DRIFTGUARD_SHADOW_VERIFY=off` skips the shadow run, and the output then warns that the plan is not proven complete). If the shadow can't run (e.g. no Docker), the LLM plan is not accepted. Error messages sent back to the LLM come from a schema-only database, so they can't contain row data.
+- **Shadow runs** write only to a container PgVouch creates on `127.0.0.1` with a random password, and removes afterwards (also on Ctrl-C). Plan SQL is treated as untrusted: it runs as a non-superuser role that owns the copied schema, so `pg_read_file()` or `COPY ... PROGRAM` fail with "permission denied". Each statement has a client-side timeout the plan can't lift, and the container is capped at 256 MB, 1 CPU and 256 processes.
+- **LLM plans are proven, not trusted:** a plan is accepted only after the validator and a shadow run both pass (`PGVOUCH_SHADOW_VERIFY=off` skips the shadow run, and the output then warns that the plan is not proven complete). If the shadow can't run (e.g. no Docker), the LLM plan is not accepted. Error messages sent back to the LLM come from a schema-only database, so they can't contain row data.
 
 ## Design decisions
 
@@ -400,7 +400,7 @@ Or run the same report locally: `npm run cli -- review --format markdown migrati
 ## Limitations (honest list)
 
 - PostgreSQL only; tested on 16.
-- Renames are reported as drop + add, with an advisory `possible_rename` hint. DriftGuard never auto-renames.
+- Renames are reported as drop + add, with an advisory `possible_rename` hint. PgVouch never auto-renames.
 - Tables without a primary key: a mismatch is detected, but the rows can't be localized.
 - Verification compares two snapshots. On a live system, run it during a write freeze or once replication has caught up.
 - The lock analyzer knows about 30 statement shapes. Anything else is flagged "not in the rule table", never silently rated safe.
@@ -439,7 +439,7 @@ docker/        docker-compose.yml + deterministic seed + read-only role
 
 ## Contributing
 
-DriftGuard is open source and contributions are welcome: bug reports, new lock rules, new eval scenarios and docs. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and ground rules, and [SECURITY.md](SECURITY.md) to report vulnerabilities privately. This project follows a [Code of Conduct](CODE_OF_CONDUCT.md).
+PgVouch is open source and contributions are welcome: bug reports, new lock rules, new eval scenarios and docs. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and ground rules, and [SECURITY.md](SECURITY.md) to report vulnerabilities privately. This project follows a [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 

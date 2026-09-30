@@ -1,18 +1,18 @@
 {
   "mcpServers": {
-    "driftguard": {
+    "pgvouch": {
       "command": "docker",
       "args": [
         "run", "-i", "--rm",
         "-e", "SOURCE_DATABASE_URL",
         "-e", "TARGET_DATABASE_URL",
-        "-e", "DRIFTGUARD_LLM",
-        "driftguard"
+        "-e", "PGVOUCH_LLM",
+        "pgvouch"
       ],
       "env": {
-        "SOURCE_DATABASE_URL": "postgres://driftguard_ro:driftguard_ro_local@host.docker.internal:5433/fintech",
-        "TARGET_DATABASE_URL": "postgres://driftguard_ro:driftguard_ro_local@host.docker.internal:5434/fintech",
-        "DRIFTGUARD_LLM": "none"
+        "SOURCE_DATABASE_URL": "postgres://pgvouch_ro:pgvouch_ro_local@host.docker.internal:5433/fintech",
+        "TARGET_DATABASE_URL": "postgres://pgvouch_ro:pgvouch_ro_local@host.docker.internal:5434/fintech",
+        "PGVOUCH_LLM": "none"
       }
     }
   }

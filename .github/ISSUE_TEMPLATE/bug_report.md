@@ -10,4 +10,4 @@ labels: bug
 
 **Steps to reproduce** (commands, and SQL if relevant; please no real data or passwords)
 
-**Environment:** DriftGuard version/commit, Node version, PostgreSQL version, OS
+**Environment:** PgVouch version/commit, Node version, PostgreSQL version, OS

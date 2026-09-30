@@ -55,7 +55,7 @@ const ALWAYS_MANUAL = new Set<DriftItem["kind"]>(["primary_key_changed", "possib
 // The role that runs plan SQL. Not a superuser: it can change the tables it owns, but it
 // can't read files, run programs (COPY ... PROGRAM) or change server settings, even if
 // a plan contains something hostile like pg_read_file().
-const PLAN_ROLE = "driftguard_plan_runner";
+const PLAN_ROLE = "pgvouch_plan_runner";
 
 /**
  * F10: proves a plan works before it touches a real database.

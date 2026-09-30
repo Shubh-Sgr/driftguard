@@ -1,16 +1,16 @@
 import pg from "pg";
 import { quoteIdent } from "../../src/sql/ident.js";
 
-// Test/eval infrastructure only. DriftGuard itself never uses admin credentials.
+// Test/eval infrastructure only. PgVouch itself never uses admin credentials.
 // These connect to the maintenance database "postgres" because CREATE/DROP DATABASE
 // can't run while connected to the database being copied or dropped.
 export const SOURCE_ADMIN_URL = process.env.SOURCE_ADMIN_URL ?? "postgres://postgres:postgres@localhost:5433/postgres";
 export const TARGET_ADMIN_URL = process.env.TARGET_ADMIN_URL ?? "postgres://postgres:postgres@localhost:5434/postgres";
 
 export const SOURCE_RO_URL =
-  process.env.SOURCE_DATABASE_URL ?? "postgres://driftguard_ro:driftguard_ro_local@localhost:5433/fintech";
+  process.env.SOURCE_DATABASE_URL ?? "postgres://pgvouch_ro:pgvouch_ro_local@localhost:5433/fintech";
 export const TARGET_RO_URL =
-  process.env.TARGET_DATABASE_URL ?? "postgres://driftguard_ro:driftguard_ro_local@localhost:5434/fintech";
+  process.env.TARGET_DATABASE_URL ?? "postgres://pgvouch_ro:pgvouch_ro_local@localhost:5434/fintech";
 
 /** Same URL, different database name. */
 export function withDatabase(url: string, database: string): string {

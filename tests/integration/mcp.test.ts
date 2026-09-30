@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createScratchDatabase, dropScratchDatabase, runAsAdmin, withDatabase } from "../../evals/lib/scratch.js";
 import { SOURCE_RO_URL, TARGET_ADMIN_URL, TARGET_RO_URL } from "./env.js";
 
-// End-to-end over the real protocol: spawn `driftguard mcp` as a child process and talk
+// End-to-end over the real protocol: spawn `pgvouch mcp` as a child process and talk
 // JSON-RPC over stdio with the official SDK client, exactly like Claude Code or Cursor.
 const DB = "dg_test_mcp";
 let client: Client;
@@ -15,7 +15,7 @@ beforeAll(async () => {
     DROP INDEX transactions_account_created_idx;
     UPDATE accounts SET balance = balance + 1 WHERE id = 4242;
   `);
-  client = new Client({ name: "driftguard-test", version: "0.0.0" });
+  client = new Client({ name: "pgvouch-test", version: "0.0.0" });
   await client.connect(
     new StdioClientTransport({
       command: "npx",
@@ -24,7 +24,7 @@ beforeAll(async () => {
         ...(process.env as Record<string, string>),
         SOURCE_DATABASE_URL: SOURCE_RO_URL,
         TARGET_DATABASE_URL: withDatabase(TARGET_RO_URL, DB),
-        DRIFTGUARD_LLM: "none",
+        PGVOUCH_LLM: "none",
       },
       stderr: "ignore",
     }),

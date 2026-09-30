@@ -12,10 +12,10 @@ const QUERY_CANCELED = "57014"; // what statement_timeout raises
 const ro = createPool(SOURCE_RO_URL, { statementTimeoutMs: 30_000 });
 const target = createPool(TARGET_RO_URL, { statementTimeoutMs: 30_000 });
 // Superuser credentials, but opened through createPool: proves the session layer alone blocks writes.
-const adminViaDriftGuard = createPool(SOURCE_ADMIN_URL, { statementTimeoutMs: 5_000 });
+const adminViaPgVouch = createPool(SOURCE_ADMIN_URL, { statementTimeoutMs: 5_000 });
 
 afterAll(async () => {
-  await Promise.all([ro.end(), target.end(), adminViaDriftGuard.end()]);
+  await Promise.all([ro.end(), target.end(), adminViaPgVouch.end()]);
 });
 
 describe("read-only safety layers", () => {
@@ -38,9 +38,9 @@ describe("read-only safety layers", () => {
     }
   });
 
-  it("layer 2: a superuser connection opened by DriftGuard is still read-only", async () => {
+  it("layer 2: a superuser connection opened by PgVouch is still read-only", async () => {
     await expect(
-      adminViaDriftGuard.query("UPDATE accounts SET balance = 0 WHERE id = 1"),
+      adminViaPgVouch.query("UPDATE accounts SET balance = 0 WHERE id = 1"),
     ).rejects.toMatchObject({ code: READ_ONLY_TRANSACTION });
   });
 
@@ -56,7 +56,7 @@ describe("read-only safety layers", () => {
   it("doctor reports the connection as safe", async () => {
     const report = await inspectConnection(ro);
     expect(report).toMatchObject({
-      user: "driftguard_ro",
+      user: "pgvouch_ro",
       readOnly: true,
       statementTimeout: "30s",
       canWriteAnyTable: false,

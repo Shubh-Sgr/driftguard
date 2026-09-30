@@ -1,12 +1,12 @@
 {
   "mcpServers": {
-    "driftguard": {
+    "pgvouch": {
       "command": "node",
-      "args": ["/absolute/path/to/driftguard/dist/cli/index.js", "mcp"],
+      "args": ["/absolute/path/to/pgvouch/dist/cli/index.js", "mcp"],
       "env": {
-        "SOURCE_DATABASE_URL": "postgres://driftguard_ro:driftguard_ro_local@localhost:5433/fintech",
-        "TARGET_DATABASE_URL": "postgres://driftguard_ro:driftguard_ro_local@localhost:5434/fintech",
-        "DRIFTGUARD_LLM": "none"
+        "SOURCE_DATABASE_URL": "postgres://pgvouch_ro:pgvouch_ro_local@localhost:5433/fintech",
+        "TARGET_DATABASE_URL": "postgres://pgvouch_ro:pgvouch_ro_local@localhost:5434/fintech",
+        "PGVOUCH_LLM": "none"
       }
     }
   }

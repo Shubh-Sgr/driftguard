@@ -143,7 +143,7 @@ describe("planMigration", () => {
     expect(p.attempts.map((a) => [a.valid, a.stage])).toEqual([[false, "shadow"], [true, "shadow"]]);
     // The retry prompt carries the shadow's finding, so the LLM knows what to fix.
     expect(llm.prompts[1]).toContain("column public.accounts.legacy (integer) exists only on target");
-    // The verifier gets the finalized plan (DriftGuard's own phase/risk), not raw LLM JSON.
+    // The verifier gets the finalized plan (PgVouch's own phase/risk), not raw LLM JSON.
     expect(verify.plans[1]!.steps[1]).toMatchObject({ phase: "contract", reversibility: "data-lossy" });
     expect(acceptanceNote(p)).toMatch(/AND a passing shadow run/);
   });

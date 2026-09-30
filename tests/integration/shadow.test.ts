@@ -86,7 +86,7 @@ describe("shadow-verified LLM plans (F7 + F10)", () => {
 
   it("reports 'unavailable' (not a plan failure) when the shadow can't copy the target", async () => {
     // Nothing listens on port 1, so the schema copy fails before any plan SQL runs.
-    const verify = shadowVerifier({ targetUrl: "postgres://driftguard_ro:x@127.0.0.1:1/fintech", source });
+    const verify = shadowVerifier({ targetUrl: "postgres://pgvouch_ro:x@127.0.0.1:1/fintech", source });
     const llm = scriptedLlm([CREATE_INDEX, DROP_COLUMN], [CREATE_INDEX, DROP_COLUMN]);
     const plan = await planMigration({ drift, source, target, llm, verify });
     expect(llm.prompts).toHaveLength(1); // no pointless retry

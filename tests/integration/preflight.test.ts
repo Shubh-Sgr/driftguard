@@ -4,7 +4,7 @@ import { loadConfig } from "../../src/config.js";
 import { createPool } from "../../src/db.js";
 import { analyzeMigration } from "../../src/locks/analyze.js";
 import { evaluatePreflight, readLockActivity } from "../../src/locks/preflight.js";
-import { DriftGuard } from "../../src/service.js";
+import { PgVouch } from "../../src/service.js";
 import { createScratchDatabase, dropScratchDatabase, runAsAdmin, withDatabase } from "../../evals/lib/scratch.js";
 import { SOURCE_RO_URL, TARGET_ADMIN_URL, TARGET_RO_URL } from "./env.js";
 
@@ -16,13 +16,13 @@ const SECRET = "secret-marker-7f3a"; // appears only in the holder's query text
 
 let holder: pg.Client;
 let holderPid: number;
-let dg: DriftGuard;
+let dg: PgVouch;
 
 beforeAll(async () => {
   await createScratchDatabase(TARGET_ADMIN_URL, DB);
   await runAsAdmin(TARGET_ADMIN_URL, DB, `
     -- The seed grants this too; repeated so databases seeded before it still pass.
-    GRANT pg_read_all_stats TO driftguard_ro;
+    GRANT pg_read_all_stats TO pgvouch_ro;
     -- A role WITHOUT pg_read_all_stats, to test "limited visibility".
     DROP ROLE IF EXISTS ${NO_STATS_ROLE};
     CREATE ROLE ${NO_STATS_ROLE} LOGIN PASSWORD 'nostats_local';
@@ -35,7 +35,7 @@ beforeAll(async () => {
   await holder.query("BEGIN");
   await holder.query(`SELECT 1 FROM accounts WHERE id = -1 AND '${SECRET}' <> ''`); // takes ACCESS SHARE, then idles
 
-  dg = new DriftGuard(loadConfig({ SOURCE_DATABASE_URL: SOURCE_RO_URL, TARGET_DATABASE_URL: withDatabase(TARGET_RO_URL, DB), DRIFTGUARD_LLM: "none" }));
+  dg = new PgVouch(loadConfig({ SOURCE_DATABASE_URL: SOURCE_RO_URL, TARGET_DATABASE_URL: withDatabase(TARGET_RO_URL, DB), PGVOUCH_LLM: "none" }));
 });
 
 afterAll(async () => {
@@ -69,7 +69,7 @@ describe("preflight: is it safe to run right now?", () => {
   });
 
   it("degrades gracefully without pg_read_all_stats: conflicts found, ages unknown", async () => {
-    const url = withDatabase(TARGET_RO_URL, DB).replace("driftguard_ro:driftguard_ro_local", `${NO_STATS_ROLE}:nostats_local`);
+    const url = withDatabase(TARGET_RO_URL, DB).replace("pgvouch_ro:pgvouch_ro_local", `${NO_STATS_ROLE}:nostats_local`);
     const pool = createPool(url, { statementTimeoutMs: 10_000 });
     try {
       const activity = await readLockActivity(pool, ["public.accounts"]);

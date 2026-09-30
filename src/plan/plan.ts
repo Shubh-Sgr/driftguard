@@ -32,7 +32,7 @@ export const MAX_FEEDBACK_CHARS = 300;
  * F7: "the LLM proposes, code decides".
  *
  *   LLM plan -> JSON parse -> zod shape check -> guardrail validator -> verifier (shadow run)
- *     all pass    -> use it (risk/reversibility still computed by DriftGuard, not the LLM)
+ *     all pass    -> use it (risk/reversibility still computed by PgVouch, not the LLM)
  *     a check fails -> retry once with that check's errors -> still failing -> rules-only plan
  *     verifier unavailable -> rules-only plan straight away (retrying can't help)
  */
