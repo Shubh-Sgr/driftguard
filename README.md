@@ -27,26 +27,26 @@ All numbers come from `npm run eval` against the seeded Docker databases. The fu
 
 | What | Result |
 |---|---|
-| Drift detection over 21 seeded scenarios | **100% precision, 100% recall** (23 true positives, 0 false positives, 0 missed) |
+| Drift detection over 23 seeded scenarios | **100% precision, 100% recall** (25 true positives, 0 false positives, 0 missed) |
 | Exact differing rows found by checksum bisection | **100%** of seeded row changes, **0** false rows |
 | Rows fetched to find them | **311 rows** instead of **6,079,997** (the rows in the mismatched tables, both sides) |
 | Lock mode predicted vs lock actually taken (read from `pg_locks`) | **30/30** statements |
 | Table rewrite predicted vs actual rewrite (`pg_class.relfilenode` changed) | **29/29** statements |
-| Rules-only migration plans that pass a shadow run on a real schema copy | **17/17** |
-| LLM plans (local llama3.2, 3B), 17 drift scenarios, *validator-only acceptance (v0.1.0)* | **5.9%** valid on first try, **17.6%** after one retry, **82.4%** fell back to the rules plan; **0/3** accepted LLM plans passed the shadow run |
+| Rules-only migration plans that pass a shadow run on a real schema copy | **19/19** |
+| LLM plans (local llama3.2, 3B), 17 drift scenarios of the first 21-scenario suite, *validator-only acceptance (v0.1.0)* | **5.9%** valid on first try, **17.6%** after one retry, **82.4%** fell back to the rules plan; **0/3** accepted LLM plans passed the shadow run |
 
 **Application stall during the migration**, measured on the 1M-row table with a probe query every ~10 ms ([evals/results-rewrite.md](evals/results-rewrite.md)):
 
 | Migration | Original: max stall | PgVouch rewrite: max stall | Rewrite total time |
 |---|---|---|---|
-| `CREATE INDEX` | 901 ms | 37 ms | 0.91 s (same) |
-| `ADD FOREIGN KEY` (2M rows) | 612 ms | 8 ms | 0.40 s |
-| `ADD CHECK` | 255 ms | 8 ms | 0.28 s |
-| `SET NOT NULL` | 438 ms | 25 ms | 0.45 s |
-| `ADD COLUMN ... NOT NULL DEFAULT gen_random_uuid()` | 6.68 s | 583 ms | 46.3 s (batched backfill) |
-| `ALTER COLUMN merchant_id TYPE bigint` | 8.90 s | 174 ms | 32.7 s (+4 manual steps) |
+| `CREATE INDEX` | 1.58 s | 47 ms | 2.1 s |
+| `ADD FOREIGN KEY` (2M rows) | 1.01 s | 49 ms | 1.2 s |
+| `ADD CHECK` | 440 ms | 63 ms | 0.85 s |
+| `SET NOT NULL` | 625 ms | 31 ms | 0.68 s |
+| `ADD COLUMN ... NOT NULL DEFAULT gen_random_uuid()` | 10.94 s | 964 ms | 108.7 s (batched backfill) |
+| `ALTER COLUMN merchant_id TYPE bigint` | 6.51 s | 93 ms | 28.0 s (includes re-creating its foreign key; +3 manual steps) |
 
-**What the LLM numbers show:** a small local model is not reliable at migration planning. That's why PgVouch never trusts it. The validator rejected 14/17 plans (unparseable SQL, hallucinated or duplicate objects, blocking DDL). The 3 it accepted were *safe but incomplete*, and only the shadow run caught that (e.g. a missing index and a sequence left out when re-creating a dropped table). Deterministic rules plans passed 17/17. Details: [evals/results-llm.md](evals/results-llm.md).
+**What the LLM numbers show:** a small local model is not reliable at migration planning. That's why PgVouch never trusts it. The validator rejected 14/17 plans (unparseable SQL, hallucinated or duplicate objects, blocking DDL). The 3 it accepted were *safe but incomplete*, and only the shadow run caught that (e.g. a missing index and a sequence left out when re-creating a dropped table). Deterministic rules plans passed all 17 (19/19 with the two type-change scenarios added later). Details: [evals/results-llm.md](evals/results-llm.md).
 
 **What changed because of it:** those numbers were measured when the validator alone decided. Now an LLM plan is accepted only if it passes the validator **and** a shadow run whose result matches the source exactly; a shadow failure is sent back to the LLM for one retry, then PgVouch falls back to the rules plan. So the 3 incomplete plans above would now be rejected. The LLM eval has not been re-run with the new pipeline yet, so there is no new number here.
 
@@ -85,7 +85,7 @@ flowchart LR
 | F6 | Safe rewrites | `CONCURRENTLY`, `NOT VALID` + `VALIDATE`, `UNIQUE ... USING INDEX`, expand/contract, batched `DO` loops with `COMMIT` per batch |
 | F7 | Guarded LLM planner | zod-checked JSON → validator (parses, allow-list, objects exist, no unsafe DDL) → shadow run (the result must match the source) → one retry with the errors → rules-only fallback |
 | F8 | MCP server | 7 read-only tools over stdio |
-| F9 | Eval suite | 21 drift/data scenarios, 30 lock statements with ground truth from Postgres, and a stall benchmark under load |
+| F9 | Eval suite | 23 drift/data scenarios, 30 lock statements with ground truth from Postgres, and a stall benchmark under load |
 | F10 | Shadow runs | Copies the target's *schema* into a disposable container, applies the plan, and diffs the result against the source |
 | F11 | Reversibility | Tags each step `reversible` / `reversible-with-backfill` / `data-lossy` and generates rollback SQL |
 | F12 | Receipts | JSON of drift + verification + plan + shadow, with a SHA-256 over canonical (sorted-key) JSON |
@@ -395,7 +395,7 @@ Or run the same report locally: `npm run cli -- review --format markdown migrati
 - **Chunk boundaries from real keys** (`row_number() % chunk_size`), so sparse, UUID and composite keys all chunk evenly. The first and last chunks are unbounded, so rows that exist only on the target are still caught.
 - **Pure diff function.** It is trivial to unit-test and is reused by the CLI, the MCP server, the planner, the shadow run and the evals.
 - **One service layer** ([src/service.ts](src/service.ts)) behind both the CLI and MCP, so they can't disagree.
-- **The shadow eval found a real bug:** the type-change rewrite dropped the column's `DEFAULT`/`NOT NULL`. It is fixed, with a regression test (commit `cc4f55b`).
+- **The shadow run found real bugs:** the type-change rewrite first dropped the column's `DEFAULT`/`NOT NULL` (fixed in commit `cc4f55b`), and later left the column's foreign keys and indexes on the old column after the swap. Both are fixed, with regression tests and eval scenarios.
 
 ## Limitations (honest list)
 
@@ -407,7 +407,7 @@ Or run the same report locally: `npm run cli -- review --format markdown migrati
 - Automatic batched backfills need a single integer primary key; otherwise the backfill step becomes a manual template.
 - Shadow runs copy the **schema only**, so they prove the resulting structure, not timing under production load (the lock analyzer covers that).
 - The demo databases listen on `127.0.0.1` only. On **Linux**, shadow containers reach the host through the Docker bridge, not loopback, so shadow runs against the demo databases need them published on the bridge too: `npm run db:down && DB_BIND=172.17.0.1 npm run db:up` (CI uses `0.0.0.0` on its throwaway runner). macOS and Windows (Docker Desktop) work as-is.
-- Expand/contract for type changes still needs human steps: deploying dual-writes and re-creating indexes/FKs on the new column.
+- Expand/contract for type changes still needs human steps: deploying dual-writes and switching reads. Indexes, foreign keys, CHECK and UNIQUE constraints on the column are copied to the new column automatically. A primary key, exclusion constraints and foreign keys from *other* tables that reference the column are left as a manual step.
 - The eval scenarios were written by me. They cover known cases, including tricky ones (volatile defaults, composite keys, partial indexes, session-setting traps), and they're all public in [evals/scenarios](evals/scenarios).
 - The Gemini adapter is implemented but was not exercised in the evals (no API key used).
 
@@ -415,14 +415,13 @@ Or run the same report locally: `npm run cli -- review --format markdown migrati
 
 - MySQL support.
 - Replication-aware verification: compare both sides at a known LSN.
-- Automatic re-creation of indexes/FKs in the type-change rewrite.
 - Signed receipts (Ed25519) in addition to the SHA-256 integrity hash.
 - Hosted demo on free tiers (Neon branches for shadow runs).
 
 ## Development
 
 ```bash
-npm test                  # 140 unit tests, no database needed
+npm test                  # 145 unit tests, no database needed
 npm run test:integration  # needs `npm run db:up` and Docker (shadow runs)
 npm run eval              # all evals → evals/results*.md
 npm run eval -- --only scenarios --llm llama3.2   # include LLM plans (needs Ollama)

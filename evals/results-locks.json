@@ -1,7 +1,7 @@
 {
-  "runAt": "2026-09-29T01:46:08.646Z",
+  "runAt": "2026-09-30T09:21:06.467Z",
   "environment": {
-    "node": "v21.6.2",
+    "node": "v22.23.1",
     "platform": "darwin arm64",
     "cpu": "Apple M1 x8",
     "postgres": "16.15",
@@ -55,7 +55,7 @@
       "predictedRewrite": false,
       "measuredMode": "SHARE UPDATE EXCLUSIVE",
       "measuredRewrite": false,
-      "method": "blocked-request",
+      "method": "observed-while-waiting",
       "modeCorrect": true
     },
     {
@@ -265,7 +265,7 @@
       "predictedRewrite": false,
       "measuredMode": "SHARE UPDATE EXCLUSIVE",
       "measuredRewrite": false,
-      "method": "blocked-request",
+      "method": "observed-while-waiting",
       "modeCorrect": true
     },
     {
@@ -285,7 +285,7 @@
       "predictedRewrite": true,
       "measuredMode": "ACCESS EXCLUSIVE",
       "measuredRewrite": true,
-      "method": "blocked-request",
+      "method": "observed-while-waiting",
       "modeCorrect": true
     },
     {

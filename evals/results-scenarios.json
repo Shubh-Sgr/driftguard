@@ -1,7 +1,7 @@
 {
-  "runAt": "2026-09-29T01:49:36.729Z",
+  "runAt": "2026-09-30T09:17:00.816Z",
   "environment": {
-    "node": "v21.6.2",
+    "node": "v22.23.1",
     "platform": "darwin arm64",
     "cpu": "Apple M1 x8",
     "postgres": "16.15",
@@ -21,8 +21,9 @@
       "rulesPlan": {
         "author": "rules",
         "fellBack": false,
+        "acceptedBy": null,
         "attempts": [],
-        "steps": 12,
+        "steps": 11,
         "shadow": "pass"
       }
     },
@@ -39,6 +40,7 @@
       "rulesPlan": {
         "author": "rules",
         "fellBack": false,
+        "acceptedBy": null,
         "attempts": [],
         "steps": 1,
         "shadow": "pass"
@@ -57,6 +59,7 @@
       "rulesPlan": {
         "author": "rules",
         "fellBack": false,
+        "acceptedBy": null,
         "attempts": [],
         "steps": 1,
         "shadow": "pass"
@@ -75,6 +78,7 @@
       "rulesPlan": {
         "author": "rules",
         "fellBack": false,
+        "acceptedBy": null,
         "attempts": [],
         "steps": 1,
         "shadow": "pass"
@@ -93,6 +97,7 @@
       "rulesPlan": {
         "author": "rules",
         "fellBack": false,
+        "acceptedBy": null,
         "attempts": [],
         "steps": 1,
         "shadow": "pass"
@@ -111,6 +116,7 @@
       "rulesPlan": {
         "author": "rules",
         "fellBack": false,
+        "acceptedBy": null,
         "attempts": [],
         "steps": 2,
         "shadow": "pass"
@@ -129,6 +135,7 @@
       "rulesPlan": {
         "author": "rules",
         "fellBack": false,
+        "acceptedBy": null,
         "attempts": [],
         "steps": 2,
         "shadow": "pass"
@@ -147,6 +154,7 @@
       "rulesPlan": {
         "author": "rules",
         "fellBack": false,
+        "acceptedBy": null,
         "attempts": [],
         "steps": 1,
         "shadow": "pass"
@@ -165,6 +173,7 @@
       "rulesPlan": {
         "author": "rules",
         "fellBack": false,
+        "acceptedBy": null,
         "attempts": [],
         "steps": 3,
         "shadow": "pass"
@@ -183,6 +192,7 @@
       "rulesPlan": {
         "author": "rules",
         "fellBack": false,
+        "acceptedBy": null,
         "attempts": [],
         "steps": 2,
         "shadow": "pass"
@@ -201,6 +211,7 @@
       "rulesPlan": {
         "author": "rules",
         "fellBack": false,
+        "acceptedBy": null,
         "attempts": [],
         "steps": 4,
         "shadow": "pass"
@@ -219,6 +230,7 @@
       "rulesPlan": {
         "author": "rules",
         "fellBack": false,
+        "acceptedBy": null,
         "attempts": [],
         "steps": 1,
         "shadow": "pass"
@@ -237,6 +249,7 @@
       "rulesPlan": {
         "author": "rules",
         "fellBack": false,
+        "acceptedBy": null,
         "attempts": [],
         "steps": 2,
         "shadow": "pass"
@@ -255,6 +268,7 @@
       "rulesPlan": {
         "author": "rules",
         "fellBack": false,
+        "acceptedBy": null,
         "attempts": [],
         "steps": 1,
         "shadow": "pass"
@@ -273,6 +287,7 @@
       "rulesPlan": {
         "author": "rules",
         "fellBack": false,
+        "acceptedBy": null,
         "attempts": [],
         "steps": 1,
         "shadow": "pass"
@@ -291,6 +306,7 @@
       "rulesPlan": {
         "author": "rules",
         "fellBack": false,
+        "acceptedBy": null,
         "attempts": [],
         "steps": 7,
         "shadow": "pass"
@@ -316,7 +332,7 @@
         "rowsFetched": 78,
         "rowsInMismatchedTables": 2000000,
         "hashQueries": 16,
-        "verifyMs": 5033
+        "verifyMs": 6406
       }
     },
     {
@@ -339,7 +355,7 @@
         "rowsFetched": 155,
         "rowsInMismatchedTables": 3999997,
         "hashQueries": 32,
-        "verifyMs": 9522
+        "verifyMs": 9344
       }
     },
     {
@@ -362,7 +378,7 @@
         "rowsFetched": 78,
         "rowsInMismatchedTables": 80000,
         "hashQueries": 16,
-        "verifyMs": 208
+        "verifyMs": 256
       }
     },
     {
@@ -385,7 +401,7 @@
         "rowsFetched": 0,
         "rowsInMismatchedTables": 0,
         "hashQueries": 0,
-        "verifyMs": 11013
+        "verifyMs": 19551
       }
     },
     {
@@ -401,8 +417,47 @@
       "rulesPlan": {
         "author": "rules",
         "fellBack": false,
+        "acceptedBy": null,
         "attempts": [],
-        "steps": 17,
+        "steps": 16,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "22_type_change_with_fk",
+      "description": "Type change on a column that has a foreign key (merchant_id -> merchants)",
+      "drift": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "acceptedBy": null,
+        "attempts": [],
+        "steps": 8,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "23_type_change_indexed_fk",
+      "description": "Type change on a foreign-key column that is also in a multi-column index",
+      "drift": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "acceptedBy": null,
+        "attempts": [],
+        "steps": 13,
         "shadow": "pass"
       }
     }
