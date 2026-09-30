@@ -25,7 +25,7 @@ export interface PlanStep {
   /** One or more SQL statements; a comment-only step is a manual action for a human. */
   sql: string;
   rationale: string;
-  /** Computed by DriftGuard's analyzer, never taken from the LLM. */
+  /** Computed by PgVouch's analyzer, never taken from the LLM. */
   risk: Risk;
   reversibility: Reversibility;
   rollbackSql: string | null;
@@ -53,7 +53,7 @@ export type PlanVerdict = { ok: true } | { ok: false; errors: string[] } | { una
 export type PlanVerifier = (plan: MigrationPlan) => Promise<PlanVerdict>;
 
 export interface MigrationPlan {
-  /** Who wrote the steps. "rules" = DriftGuard's deterministic generator. */
+  /** Who wrote the steps. "rules" = PgVouch's deterministic generator. */
   author: "llm" | "rules";
   model: string | null;
   summary: string;

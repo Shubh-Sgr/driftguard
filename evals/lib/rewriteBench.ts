@@ -49,7 +49,7 @@ export interface BenchResult {
 }
 
 /**
- * Runs each risky statement and its DriftGuard rewrite on separate fresh copies of the
+ * Runs each risky statement and its PgVouch rewrite on separate fresh copies of the
  * 1M-row database while a probe keeps querying the table (like live app traffic).
  * The probe's worst latency = how long the migration blocked the application.
  */

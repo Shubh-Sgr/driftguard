@@ -1,4 +1,4 @@
-# Contributing to DriftGuard
+# Contributing to PgVouch
 
 Thanks for your interest! Bug reports, docs fixes, new lock rules and new eval scenarios are all welcome.
 
@@ -7,7 +7,7 @@ Thanks for your interest! Bug reports, docs fixes, new lock rules and new eval s
 Requirements: Node 22 (or 20.12+) and Docker.
 
 ```bash
-git clone https://github.com/Shubh-Sgr/driftguard.git && cd driftguard
+git clone https://github.com/Shubh-Sgr/pgvouch.git && cd pgvouch
 npm install
 cp .env.example .env
 npm run db:up        # add SEED_TRANSACTIONS=20000 for a faster, smaller seed
@@ -26,7 +26,7 @@ CI runs the same checks on every pull request.
 
 ## Ground rules
 
-- **DriftGuard never writes to a user's database.** New features must work through the read-only role. Anything that writes goes to a disposable shadow container (see `src/shadow/`).
+- **PgVouch never writes to a user's database.** New features must work through the read-only role. Anything that writes goes to a disposable shadow container (see `src/shadow/`).
 - **Safety logic stays deterministic.** Lock rules, safe rewrites and plan validation are plain code with tests. An LLM may propose, but it never decides.
 - **Parameterized queries only.** Identifiers come from the catalog and are quoted with `quoteIdent`/`ident` (`src/sql/ident.ts`).
 - **Every behavior change gets a test.** Pure logic goes in `tests/unit`; anything that needs Postgres goes in `tests/integration`.
@@ -44,4 +44,4 @@ CI runs the same checks on every pull request.
 
 Small commits with [Conventional Commit](https://www.conventionalcommits.org/) messages, e.g. `feat(locks): add rule for ALTER TABLE ... SET TABLESPACE`.
 
-By contributing, you agree that your contributions are licensed under the MIT License.
+By contributing, you agree that your contributions are licensed under the [Apache License 2.0](LICENSE) (see section 5 of the license), including its patent grant.

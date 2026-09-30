@@ -31,13 +31,13 @@ export interface ShadowContainer {
  * It has no volume, so removing it deletes everything in it.
  */
 export async function startShadowContainer(image = "postgres:16-alpine"): Promise<ShadowContainer> {
-  const name = `driftguard-shadow-${randomBytes(4).toString("hex")}`;
+  const name = `pgvouch-shadow-${randomBytes(4).toString("hex")}`;
   const password = randomBytes(12).toString("hex");
   await docker([
     "run", "-d", "--rm",
     "--name", name,
-    // Lets stray containers be found (docker ps --filter label=driftguard.shadow).
-    "--label", "driftguard.shadow=1",
+    // Lets stray containers be found (docker ps --filter label=pgvouch.shadow).
+    "--label", "pgvouch.shadow=1",
     "-e", `POSTGRES_PASSWORD=${password}`,
     // Bind to 127.0.0.1 only, on a port Docker picks (no clashes, not exposed on the network).
     "-p", "127.0.0.1::5432",

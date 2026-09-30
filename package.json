@@ -1,14 +1,15 @@
 {
-  "name": "driftguard",
+  "name": "pgvouch",
   "version": "0.2.0",
   "description": "MCP server + CLI for safe PostgreSQL migrations: drift detection, lock analysis, safe rewrites, checksum verification.",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "bin": {
-    "driftguard": "dist/cli/index.js"
+    "pgvouch": "dist/cli/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "NOTICE"
   ],
   "engines": {
     "node": ">=20.12"
@@ -39,13 +40,13 @@
     "vitest": "^4.1.11"
   },
   "author": "Shubham Sagar (https://github.com/Shubh-Sgr)",
-  "homepage": "https://github.com/Shubh-Sgr/driftguard#readme",
+  "homepage": "https://github.com/Shubh-Sgr/pgvouch#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Shubh-Sgr/driftguard.git"
+    "url": "git+https://github.com/Shubh-Sgr/pgvouch.git"
   },
   "bugs": {
-    "url": "https://github.com/Shubh-Sgr/driftguard/issues"
+    "url": "https://github.com/Shubh-Sgr/pgvouch/issues"
   },
   "keywords": [
     "postgresql",

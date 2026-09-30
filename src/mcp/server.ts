@@ -3,7 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import type { Config } from "../config.js";
 import { renderPlanSql } from "../plan/render.js";
-import { DriftGuard } from "../service.js";
+import { PgVouch } from "../service.js";
 import type { RowDiff } from "../verify/bisect.js";
 import { VERSION } from "../version.js";
 
@@ -24,8 +24,8 @@ async function run(fn: () => Promise<unknown>): Promise<ToolResult> {
   }
 }
 
-export function buildMcpServer(dg: DriftGuard): McpServer {
-  const server = new McpServer({ name: "driftguard", version: VERSION });
+export function buildMcpServer(dg: PgVouch): McpServer {
+  const server = new McpServer({ name: "pgvouch", version: VERSION });
 
   server.registerTool(
     "detect_drift",
@@ -122,7 +122,7 @@ export function buildMcpServer(dg: DriftGuard): McpServer {
     {
       title: "Plan a safe migration",
       description:
-        "Build an ordered, safe migration plan that makes TARGET match SOURCE. If an LLM is configured, its plan must pass a validator (objects exist, only allow-listed statements, no unsafe DDL) and then a shadow run: DriftGuard starts a disposable local Postgres container, copies the target's schema (no data) into it, applies the plan as a non-superuser and checks the result matches SOURCE. Otherwise the deterministic rules-only plan is returned. `plan.acceptedBy` and the first lines of `sql` say how the plan was accepted. Risk and reversibility are computed by DriftGuard. The source and target databases are only read; the plan is returned as SQL for a human to review and is never run on them.",
+        "Build an ordered, safe migration plan that makes TARGET match SOURCE. If an LLM is configured, its plan must pass a validator (objects exist, only allow-listed statements, no unsafe DDL) and then a shadow run: PgVouch starts a disposable local Postgres container, copies the target's schema (no data) into it, applies the plan as a non-superuser and checks the result matches SOURCE. Otherwise the deterministic rules-only plan is returned. `plan.acceptedBy` and the first lines of `sql` say how the plan was accepted. Risk and reversibility are computed by PgVouch. The source and target databases are only read; the plan is returned as SQL for a human to review and is never run on them.",
       inputSchema: { useLlm: z.boolean().optional().describe("Set false for a rules-only plan; default uses the configured LLM") },
       annotations: { ...READ_ONLY, idempotentHint: false },
     },
@@ -141,13 +141,13 @@ function withoutValues(row: RowDiff): { kind: RowDiff["kind"]; key: Record<strin
   return row.kind === "changed" ? { kind: row.kind, key: row.key, columns: row.columns } : { kind: row.kind, key: row.key };
 }
 
-/** Entry point for `driftguard mcp`: JSON-RPC over stdin/stdout. */
+/** Entry point for `pgvouch mcp`: JSON-RPC over stdin/stdout. */
 export async function startMcpServer(config: Config): Promise<void> {
-  const dg = new DriftGuard(config);
+  const dg = new PgVouch(config);
   const server = buildMcpServer(dg);
   // stdout carries the protocol, so any logging must go to stderr.
   await server.connect(new StdioServerTransport());
-  console.error(`driftguard MCP server ${VERSION} ready on stdio`);
+  console.error(`pgvouch MCP server ${VERSION} ready on stdio`);
   const shutdown = async () => {
     await server.close();
     await dg.close();

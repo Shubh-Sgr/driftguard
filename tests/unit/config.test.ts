@@ -17,7 +17,7 @@ describe("loadConfig", () => {
   });
 
   it("coerces the timeout from a string", () => {
-    expect(loadConfig({ ...valid, DRIFTGUARD_STATEMENT_TIMEOUT_MS: "5000" }).statementTimeoutMs).toBe(5000);
+    expect(loadConfig({ ...valid, PGVOUCH_STATEMENT_TIMEOUT_MS: "5000" }).statementTimeoutMs).toBe(5000);
   });
 
   it("rejects a missing target URL and names the variable", () => {
@@ -29,17 +29,17 @@ describe("loadConfig", () => {
   });
 
   it("rejects a zero or negative timeout", () => {
-    expect(() => loadConfig({ ...valid, DRIFTGUARD_STATEMENT_TIMEOUT_MS: "0" })).toThrow(/DRIFTGUARD_STATEMENT_TIMEOUT_MS/);
+    expect(() => loadConfig({ ...valid, PGVOUCH_STATEMENT_TIMEOUT_MS: "0" })).toThrow(/PGVOUCH_STATEMENT_TIMEOUT_MS/);
   });
 
-  it("shadow-verifies LLM plans by default; DRIFTGUARD_SHADOW_VERIFY=off turns it off", () => {
+  it("shadow-verifies LLM plans by default; PGVOUCH_SHADOW_VERIFY=off turns it off", () => {
     expect(loadConfig(valid).shadowVerify).toBe(true);
-    expect(loadConfig({ ...valid, DRIFTGUARD_SHADOW_VERIFY: "off" }).shadowVerify).toBe(false);
-    expect(() => loadConfig({ ...valid, DRIFTGUARD_SHADOW_VERIFY: "false" })).toThrow(/DRIFTGUARD_SHADOW_VERIFY/);
+    expect(loadConfig({ ...valid, PGVOUCH_SHADOW_VERIFY: "off" }).shadowVerify).toBe(false);
+    expect(() => loadConfig({ ...valid, PGVOUCH_SHADOW_VERIFY: "false" })).toThrow(/PGVOUCH_SHADOW_VERIFY/);
   });
 
   it("rejects an unknown LLM provider", () => {
-    expect(() => loadConfig({ ...valid, DRIFTGUARD_LLM: "gpt" })).toThrow(/DRIFTGUARD_LLM/);
+    expect(() => loadConfig({ ...valid, PGVOUCH_LLM: "gpt" })).toThrow(/PGVOUCH_LLM/);
   });
 });
 

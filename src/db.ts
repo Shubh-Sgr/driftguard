@@ -11,15 +11,15 @@ export interface PoolOptions {
  *
  * This is the second safety layer. The first is the database role itself
  * (SELECT-only + default_transaction_read_only, see docker/seed/00_roles.sql),
- * so even if someone points DriftGuard at a superuser URL, every transaction
+ * so even if someone points PgVouch at a superuser URL, every transaction
  * still starts READ ONLY and every query is still capped by statement_timeout.
  */
 export function createPool(connectionString: string, opts: PoolOptions): pg.Pool {
   return new pg.Pool({
     connectionString,
-    // Small pool: DriftGuard runs a few analytical queries, not web traffic.
+    // Small pool: PgVouch runs a few analytical queries, not web traffic.
     max: 4,
-    application_name: opts.applicationName ?? "driftguard",
+    application_name: opts.applicationName ?? "pgvouch",
     // Sent in the startup packet, so it applies before our first query runs.
     statement_timeout: opts.statementTimeoutMs,
     options: [

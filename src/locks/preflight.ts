@@ -4,7 +4,7 @@ import { blocksReads, blocksWrites, conflicts, fromPgLockMode, type LockMode } f
 
 /**
  * Another database session, described without its query text: queries can contain
- * personal data, and DriftGuard never needs them to decide anything.
+ * personal data, and PgVouch never needs them to decide anything.
  */
 export interface SessionInfo {
   /** null for a prepared transaction (PREPARE TRANSACTION), which has no backend. */
@@ -190,7 +190,7 @@ export function evaluatePreflight(analysis: MigrationAnalysis, activity: LockAct
     notes.push("While a statement waits for its lock, new queries that conflict with it queue BEHIND it: a blocked ALTER TABLE can stall all traffic on the table. Run the migration with SET lock_timeout so it gives up instead, and retry later.");
   }
   if (longTransactions.length) {
-    notes.push(`${longTransactions.length} long or idle-in-transaction session(s) found. DriftGuard never terminates sessions; ask their owner, or use pg_terminate_backend yourself if appropriate.`);
+    notes.push(`${longTransactions.length} long or idle-in-transaction session(s) found. PgVouch never terminates sessions; ask their owner, or use pg_terminate_backend yourself if appropriate.`);
   }
   notes.push("This is a snapshot: sessions can start or finish a moment later.");
 
