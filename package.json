@@ -2,13 +2,14 @@
   "name": "pgvouch",
   "version": "0.2.0",
   "description": "MCP server + CLI for safe PostgreSQL migrations: drift detection, lock analysis, safe rewrites, checksum verification.",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "bin": {
     "pgvouch": "dist/cli/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "NOTICE"
   ],
   "engines": {
     "node": ">=20.12"

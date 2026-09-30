@@ -6,6 +6,7 @@ All notable changes to PgVouch. The format follows [Keep a Changelog](https://ke
 
 ### Changed
 - **Renamed from DriftGuard to PgVouch** (the npm name `driftguard` belongs to an unrelated project). Breaking for existing setups: the CLI is now `pgvouch`, environment variables are `PGVOUCH_*` (was `DRIFTGUARD_*`), the demo read-only role is `pgvouch_ro`, the MCP server name is `pgvouch`, and the Docker image is `ghcr.io/<owner>/pgvouch`. Recreate the demo databases with `npm run db:down && npm run db:up`.
+- **License changed from MIT to Apache 2.0**, which adds an explicit patent grant from contributors. A `NOTICE` file ships with the npm package and the Docker image.
 
 ## [0.2.0] - 2026-09-29
 

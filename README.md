@@ -3,7 +3,7 @@
 **An MCP server + CLI that lets AI assistants safely inspect, plan and _prove_ PostgreSQL migrations.**
 The LLM proposes; deterministic code decides.
 
-[![CI](https://github.com/Shubh-Sgr/pgvouch/actions/workflows/ci.yml/badge.svg)](https://github.com/Shubh-Sgr/pgvouch/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/Shubh-Sgr/pgvouch/actions/workflows/ci.yml/badge.svg)](https://github.com/Shubh-Sgr/pgvouch/actions/workflows/ci.yml) [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 ![PgVouch in a terminal: schema drift, the exact differing rows, the locks a migration takes, and its safe rewrite](docs/demo.gif)
 
@@ -443,4 +443,4 @@ PgVouch is open source and contributions are welcome: bug reports, new lock rule
 
 ## License
 
-[MIT](LICENSE) © 2026 Shubham Sagar. Free to use, modify and distribute.
+[Apache License 2.0](LICENSE) © 2026 Shubham Sagar. Free to use, modify and distribute, including commercially; keep the [LICENSE](LICENSE) and [NOTICE](NOTICE) files with any copy. It also grants a patent license from every contributor.
