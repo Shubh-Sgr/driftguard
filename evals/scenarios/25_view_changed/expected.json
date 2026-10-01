@@ -1,0 +1,6 @@
+{
+  "description": "View definition changed on target",
+  "drift": [
+    "view_changed:public.customer_account_counts"
+  ]
+}

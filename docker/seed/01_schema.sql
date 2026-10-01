@@ -103,3 +103,34 @@ CREATE INDEX audit_log_entity_idx ON audit_log (entity, entity_id);
 
 -- Standalone sequence (not owned by a column) so F1 has one to introspect.
 CREATE SEQUENCE invoice_number_seq START WITH 100000;
+
+-- Objects around the tables, so drift detection has a view, a function, a trigger, an
+-- enum type, an extension and row-level security to compare (eval scenarios 24-31).
+-- The view avoids accounts.balance and accounts.status, which other scenarios change.
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE TYPE card_status AS ENUM ('active', 'frozen', 'closed');
+
+CREATE VIEW customer_account_counts AS
+  SELECT c.id AS customer_id, c.country, count(a.id) AS accounts
+  FROM customers c
+  LEFT JOIN accounts a ON a.customer_id = c.id
+  GROUP BY c.id, c.country;
+
+-- Only fills created_at when an INSERT leaves it out, so the seed stays deterministic.
+CREATE FUNCTION audit_log_set_created_at() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.created_at IS NULL THEN
+    NEW.created_at := now();
+  END IF;
+  RETURN NEW;
+END
+$$;
+
+CREATE TRIGGER audit_log_created_at BEFORE INSERT ON audit_log
+  FOR EACH ROW EXECUTE FUNCTION audit_log_set_created_at();
+
+-- Row-level security with a read-everything policy: every role still sees every row
+-- (the read-only role included), but there is a policy to lose or change.
+ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
+CREATE POLICY audit_log_read ON audit_log FOR SELECT USING (true);

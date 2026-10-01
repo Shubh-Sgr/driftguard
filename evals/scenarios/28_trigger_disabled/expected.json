@@ -1,0 +1,6 @@
+{
+  "description": "Trigger disabled on target (its logic silently stops)",
+  "drift": [
+    "trigger_changed:public.audit_log.audit_log_created_at"
+  ]
+}

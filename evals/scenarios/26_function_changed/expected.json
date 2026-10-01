@@ -1,0 +1,6 @@
+{
+  "description": "Trigger function body changed on target",
+  "drift": [
+    "function_changed:public.audit_log_set_created_at()"
+  ]
+}

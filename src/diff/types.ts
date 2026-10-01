@@ -21,6 +21,27 @@ export type DriftItem =
   | { kind: "sequence_missing"; sequence: string; severity: Severity }
   | { kind: "sequence_extra"; sequence: string; severity: Severity }
   | { kind: "sequence_changed"; sequence: string; field: string; from: string; to: string; severity: Severity }
+  // Views, functions/procedures, triggers, enum types, extensions and row-level security.
+  // `name` is the object's key: "schema.view", "schema.fn(args)", "schema.type", "extension".
+  | { kind: "view_missing"; name: string; materialized: boolean; severity: Severity }
+  | { kind: "view_extra"; name: string; materialized: boolean; severity: Severity }
+  | { kind: "view_changed"; name: string; from: string; to: string; severity: Severity }
+  | { kind: "function_missing"; name: string; severity: Severity }
+  | { kind: "function_extra"; name: string; severity: Severity }
+  | { kind: "function_changed"; name: string; from: string; to: string; severity: Severity }
+  | { kind: "trigger_missing"; table: string; name: string; severity: Severity }
+  | { kind: "trigger_extra"; table: string; name: string; severity: Severity }
+  | { kind: "trigger_changed"; table: string; name: string; from: string; to: string; severity: Severity }
+  | { kind: "enum_missing"; name: string; severity: Severity }
+  | { kind: "enum_extra"; name: string; severity: Severity }
+  | { kind: "enum_changed"; name: string; from: string[]; to: string[]; severity: Severity }
+  | { kind: "extension_missing"; name: string; severity: Severity }
+  | { kind: "extension_extra"; name: string; severity: Severity }
+  | { kind: "extension_changed"; name: string; from: string; to: string; severity: Severity }
+  | { kind: "policy_missing"; table: string; name: string; severity: Severity }
+  | { kind: "policy_extra"; table: string; name: string; severity: Severity }
+  | { kind: "policy_changed"; table: string; name: string; from: string; to: string; severity: Severity }
+  | { kind: "row_security_changed"; table: string; from: string; to: string; severity: Severity }
   // Advisory only: a missing + extra column pair with the same type MIGHT be a rename.
   // We never act on it — a wrong rename guess could lose data.
   | { kind: "possible_rename"; table: string; from: string; to: string; severity: Severity };
@@ -61,6 +82,28 @@ export function driftItemKey(item: DriftItem): string {
       return `${item.kind}:${item.sequence}`;
     case "sequence_changed":
       return `${item.kind}:${item.sequence}.${item.field}`;
+    case "view_missing":
+    case "view_extra":
+    case "view_changed":
+    case "function_missing":
+    case "function_extra":
+    case "function_changed":
+    case "enum_missing":
+    case "enum_extra":
+    case "enum_changed":
+    case "extension_missing":
+    case "extension_extra":
+    case "extension_changed":
+      return `${item.kind}:${item.name}`;
+    case "trigger_missing":
+    case "trigger_extra":
+    case "trigger_changed":
+    case "policy_missing":
+    case "policy_extra":
+    case "policy_changed":
+      return `${item.kind}:${item.table}.${item.name}`;
+    case "row_security_changed":
+      return `${item.kind}:${item.table}`;
     case "possible_rename":
       return `${item.kind}:${item.table}.${item.from}->${item.to}`;
   }

@@ -13,14 +13,21 @@ export interface RawStep {
   rationale: string;
   /** Set for PgVouch's own batched backfill loops (they only fill NULLs in a new column). */
   backfill?: boolean;
+  /** Removes something the source doesn't have: held back until after the app stops using it. */
+  contract?: boolean;
 }
 
 /** Rules-only path: raw DDL -> F6 safe rewrites -> steps. */
 export async function stepsFromChanges(changes: DesiredChange[], target: Schema): Promise<PlanStep[]> {
   const raw: RawStep[] = [];
   for (const change of changes) {
+    const contract = change.phase === "contract";
     if (change.manual) {
-      raw.push({ title: change.title, sql: change.sql, rationale: "Needs a human decision." });
+      raw.push({ title: change.title, sql: change.sql, rationale: "Needs a human decision.", contract });
+      continue;
+    }
+    if (change.verbatim) {
+      raw.push({ title: change.title, sql: change.sql, rationale: "Replaced in one transaction, so the old and new versions never both exist or both disappear.", contract });
       continue;
     }
     const rewritten = await rewriteMigration(change.sql, { schema: target });
@@ -31,6 +38,7 @@ export async function stepsFromChanges(changes: DesiredChange[], target: Schema)
           sql: step.sql,
           rationale: step.note ? `${s.explanation} ${step.note}` : s.explanation,
           backfill: step.kind === "backfill",
+          contract,
         });
       }
     }
@@ -71,7 +79,7 @@ export async function finalizeSteps(raw: RawStep[], target: Schema): Promise<Pla
       // A step that COMMITs (our batch loop) or is its own BEGIN...COMMIT block (the
       // type-change swap) can't be wrapped in another transaction.
       transactional: analyses.every((a) => a.transactional) && !/\bCOMMIT;/.test(step.sql) && !stmts.some((s) => s.type === "TransactionStmt"),
-      phase: dataLossy || /^-- CONTRACT/.test(step.sql) ? "contract" : "expand",
+      phase: step.contract || dataLossy || /^-- CONTRACT/.test(step.sql) ? "contract" : "expand",
       manual,
     };
   });

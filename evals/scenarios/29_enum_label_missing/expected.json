@@ -1,0 +1,6 @@
+{
+  "description": "Enum type missing a label on target",
+  "drift": [
+    "enum_changed:public.card_status"
+  ]
+}

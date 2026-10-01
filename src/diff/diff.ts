@@ -1,4 +1,5 @@
 import type { Column, Schema, Table } from "../introspect/types.js";
+import { diffObjects } from "./objects.js";
 import { isWideningTypeChange } from "./typeChange.js";
 import { driftItemKey, type DriftItem, type DriftReport, type Severity } from "./types.js";
 
@@ -39,6 +40,8 @@ export function diffSchemas(source: Schema, target: Schema): DriftReport {
       }
     }
   }
+
+  items.push(...diffObjects(source, target));
 
   // Sort so output order never depends on catalog/hash-map iteration order.
   items.sort((a, b) => driftItemKey(a).localeCompare(driftItemKey(b)));

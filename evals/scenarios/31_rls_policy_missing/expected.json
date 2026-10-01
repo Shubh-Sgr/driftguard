@@ -1,0 +1,7 @@
+{
+  "description": "Row-level security policy dropped and RLS turned off on target",
+  "drift": [
+    "policy_missing:public.audit_log.audit_log_read",
+    "row_security_changed:public.audit_log"
+  ]
+}
