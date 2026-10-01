@@ -12,7 +12,8 @@ describe("loadConfig", () => {
       sourceUrl: valid.SOURCE_DATABASE_URL,
       targetUrl: valid.TARGET_DATABASE_URL,
       statementTimeoutMs: 30_000,
-      llm: { provider: "ollama", ollamaModel: "llama3.2" },
+      // No LLM unless asked for: nothing is sent to any model by default.
+      llm: { provider: "none", ollamaModel: "llama3.2" },
     });
   });
 
