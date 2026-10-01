@@ -44,14 +44,15 @@ export function buildMcpServer(dg: PgVouch): McpServer {
     {
       title: "Verify data with chunked checksums",
       description:
-        "Prove that table data is identical on source and target by comparing MD5 hashes of primary-key chunks computed inside Postgres (no rows are transferred). Returns per-table status and the key ranges of mismatched chunks. Use find_differing_rows to drill into a mismatched table.",
+        "Prove that table data is identical on source and target by comparing MD5 hashes of primary-key chunks computed inside Postgres (no rows are transferred). Returns per-table status and the key ranges of mismatched chunks, plus a check that every identity/serial sequence on the target is ahead of its data (a sequence left behind makes the next INSERT fail with a duplicate key). Use find_differing_rows to drill into a mismatched table.",
       inputSchema: {
         tables: z.array(z.string()).optional().describe("Tables to verify, e.g. ['transactions']; default all"),
+        schemas: z.array(z.string()).optional().describe("Schemas to verify; default ['public']"),
         chunkSize: z.number().int().min(100).max(1_000_000).optional().describe("Rows per chunk; default 10000"),
       },
       annotations: READ_ONLY,
     },
-    ({ tables, chunkSize }) => run(() => dg.verifyData({ tables, chunkSize })),
+    ({ tables, schemas, chunkSize }) => run(() => dg.verifyData({ tables, schemas, chunkSize })),
   );
 
   server.registerTool(

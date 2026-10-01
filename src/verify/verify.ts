@@ -3,6 +3,7 @@ import { introspect } from "../introspect/introspect.js";
 import type { Schema } from "../introspect/types.js";
 import { findDifferingRows, type BisectOptions, type BisectStats, type RowDiff } from "./bisect.js";
 import { chunkRanges, hashRange, hashWholeTable, type RangeHash } from "./checksum.js";
+import { checkSequences, type SequenceCheck } from "./sequences.js";
 import { openSnapshot, type Snapshot } from "./snapshot.js";
 import { buildTableSpec, describeRange, type KeyRange, type TableSpec } from "./table.js";
 
@@ -23,14 +24,21 @@ export interface TableVerification {
   chunks: number;
   mismatchedChunks: MismatchedChunk[];
   reason?: string;
+  /** Caveats about what was compared (e.g. row-level security hid rows from this role). */
+  notes?: string[];
   /** Only filled when findRows is on. */
   differingRows?: RowDiff[];
   bisect?: BisectStats & { truncated: boolean };
 }
 
 export interface VerifyReport {
+  /** Data equality only. Sequence health is reported separately in `sequencesOk`. */
   identical: boolean;
   tables: TableVerification[];
+  /** Identity/serial sequences on the TARGET, each checked against the data it feeds. */
+  sequences: SequenceCheck[];
+  /** False if a target sequence is behind its data (the next INSERT can hit a duplicate key). */
+  sequencesOk: boolean;
   elapsedMs: number;
 }
 
@@ -59,12 +67,29 @@ export async function verifyData(sourcePool: pg.Pool, targetPool: pg.Pool, opts:
     ]);
 
     const tables: TableVerification[] = [];
-    for (const key of selectTables(sourceSchema, targetSchema, opts.tables)) {
-      tables.push(await verifyTable(source, target, sourceSchema, targetSchema, key, chunkSize, opts));
+    const keys = selectTables(sourceSchema, targetSchema, opts.tables, opts.schemas);
+    const [sourceBypass, targetBypass] = await Promise.all([bypassesRls(source.client), bypassesRls(target.client)]);
+    for (const key of keys) {
+      const result = await verifyTable(source, target, sourceSchema, targetSchema, key, chunkSize, opts);
+      // With row-level security on, a role without BYPASSRLS only sees the rows its
+      // policies allow: "identical" would then only be about those rows. Say so.
+      const hidden = [
+        !sourceBypass && sourceSchema.tables[key]?.rowSecurity?.enabled ? "source" : null,
+        !targetBypass && targetSchema.tables[key]?.rowSecurity?.enabled ? "target" : null,
+      ].filter(Boolean);
+      if (hidden.length && result.status !== "skipped") {
+        result.notes = [`row-level security is on (${hidden.join(", ")}): only the rows this role's policies allow were compared; use a role with BYPASSRLS to compare every row`];
+      }
+      tables.push(result);
     }
+    // Copied data with sequences left behind is a classic post-migration outage, so a
+    // data check also checks that the target's sequences are past its data.
+    const sequences = await checkSequences(target.client, targetSchema, keys);
     return {
       identical: tables.every((t) => t.status === "match"),
       tables,
+      sequences,
+      sequencesOk: sequences.every((s) => s.status !== "behind"),
       elapsedMs: Date.now() - started,
     };
   } finally {
@@ -72,11 +97,20 @@ export async function verifyData(sourcePool: pg.Pool, targetPool: pg.Pool, opts:
   }
 }
 
-function selectTables(source: Schema, target: Schema, requested?: string[]): string[] {
+async function bypassesRls(client: pg.PoolClient): Promise<boolean> {
+  const { rows } = await client.query<{ bypass: boolean }>("SELECT rolsuper OR rolbypassrls AS bypass FROM pg_roles WHERE rolname = current_user");
+  return rows[0]?.bypass ?? false;
+}
+
+function selectTables(source: Schema, target: Schema, requested?: string[], schemas: string[] = ["public"]): string[] {
   const all = Object.keys(source.tables).sort();
   if (!requested?.length) return all;
-  // Accept "transactions" as shorthand for "public.transactions".
-  const keys = requested.map((name) => (name.includes(".") ? name : `public.${name}`));
+  // A bare name ("transactions") means that table in the verified schemas (public by default).
+  const exists = (k: string) => !!source.tables[k] || !!target.tables[k];
+  const keys = requested.map((name) => {
+    if (name.includes(".")) return name;
+    return schemas.map((s) => `${s}.${name}`).find(exists) ?? `${schemas[0] ?? "public"}.${name}`;
+  });
   // A typo would otherwise be reported as "DIFFERENCES FOUND: table missing on source".
   // A table on only one side is real drift and is still reported (as skipped).
   const unknown = keys.filter((k) => !source.tables[k] && !target.tables[k]);

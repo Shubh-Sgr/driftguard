@@ -98,6 +98,26 @@ describe("verifyData (F3) + bisection (F4)", () => {
     expect(report.tables[0]!.reason).toMatch(/note/);
   });
 
+  it("notes when row-level security limits which rows the role can see", async () => {
+    const report = await verifyData(source, target, { tables: ["audit_log"] });
+    expect(report.tables[0]!.notes?.join()).toMatch(/row-level security is on \(source, target\)/);
+  });
+
+  it("flags a sequence left behind its data, with the statement that fixes it", async () => {
+    const before = await verifyData(source, target, { tables: ["transactions"] });
+    expect(before.sequences).toEqual([expect.objectContaining({ table: "public.transactions", column: "id", status: "ok" })]);
+    expect(before.sequencesOk).toBe(true);
+
+    await runAsAdmin(TARGET_ADMIN_URL, DB, "SELECT setval('transactions_id_seq', 5)");
+    const after = await verifyData(source, target, { tables: ["transactions"] });
+    expect(after.sequencesOk).toBe(false);
+    expect(after.sequences[0]).toMatchObject({
+      status: "behind",
+      nextValue: "6",
+      fix: `SELECT setval('public.transactions_id_seq', (SELECT max("id") FROM "public"."transactions"));`,
+    });
+  });
+
   it("rejects a table that exists on neither side instead of reporting a difference", async () => {
     await expect(verifyData(source, target, { tables: ["transactionz"] })).rejects.toThrow("Unknown table(s), not found on source or target: public.transactionz");
   });

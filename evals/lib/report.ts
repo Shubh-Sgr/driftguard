@@ -35,6 +35,7 @@ export function summarize(r: EvalResults) {
     rowsFalse: sum(data, (d) => d.rowsFalse),
     rowsFetched: sum(data, (d) => d.rowsFetched),
     rowsInMismatchedTables: sum(data, (d) => d.rowsInMismatchedTables),
+    sequences: { checked: sum(data, (d) => d.sequences?.checked ?? 0), tp: sum(data, (d) => d.sequences?.tp ?? 0), fp: sum(data, (d) => d.sequences?.fp ?? 0), fn: sum(data, (d) => d.sequences?.fn ?? 0) },
     rulesShadowPass: `${rules.filter((p) => p.shadow === "pass").length}/${rules.length}`,
     llmValidFirstTry: llm.length ? pct(llm.filter((p) => p.attempts[0]?.valid).length, llm.length) : null,
     llmValidAfterRetry: llm.length ? pct(llm.filter((p) => p.author === "llm").length, llm.length) : null,
@@ -59,6 +60,7 @@ export function toMarkdown(r: EvalResults): string {
     L.push(`| Data mismatch detection (tables) | TP ${h.dataTables.tp}, FP ${h.dataTables.fp}, FN ${h.dataTables.fn} |`);
     L.push(`| Exact differing rows found by bisection | ${h.rowRecall} recall, ${h.rowsFalse} false rows |`);
     L.push(`| Rows fetched by bisection vs rows in mismatched tables | ${h.rowsFetched.toLocaleString("en-US")} vs ${h.rowsInMismatchedTables.toLocaleString("en-US")} |`);
+    L.push(`| Sequences behind their data (checks run / found / false alarms / missed) | ${h.sequences.checked} / ${h.sequences.tp} / ${h.sequences.fp} / ${h.sequences.fn} |`);
     L.push(`| Rules-only plans verified by shadow run | ${h.rulesShadowPass} |`);
     if (h.llmValidFirstTry) {
       L.push(`| LLM plans valid on first try | ${h.llmValidFirstTry} |`);
@@ -95,6 +97,8 @@ export function toMarkdown(r: EvalResults): string {
     const failures = r.scenarios.flatMap((s) => [
       ...s.drift.falsePositives.map((k) => `- ${s.name}: false positive \`${k}\``),
       ...s.drift.missed.map((k) => `- ${s.name}: missed \`${k}\``),
+      ...(s.data?.sequences?.falsePositives ?? []).map((k) => `- ${s.name}: sequence false alarm \`${k}\``),
+      ...(s.data?.sequences?.missed ?? []).map((k) => `- ${s.name}: missed sequence behind data \`${k}\``),
       ...(s.rulesPlan?.shadowFailure ? [`- ${s.name}: rules plan shadow failure: ${s.rulesPlan.shadowFailure}`] : []),
       ...(s.llmPlan?.shadowFailure ? [`- ${s.name}: LLM plan shadow failure: ${s.llmPlan.shadowFailure}`] : []),
     ]);

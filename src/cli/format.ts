@@ -22,6 +22,7 @@ export function formatVerify(report: VerifyReport): string {
     const rows = `${t.sourceRows.toLocaleString("en-US")} / ${t.targetRows.toLocaleString("en-US")} rows`;
     lines.push(`  ${t.status.toUpperCase().padEnd(8)} ${t.table.padEnd(28)} ${t.status === "skipped" ? "" : `${rows}, ${t.chunks} chunk(s)`}`);
     if (t.reason) lines.push(`           ${t.reason}`);
+    for (const n of t.notes ?? []) lines.push(`           note: ${n}`);
     for (const c of t.mismatchedChunks.slice(0, 5)) lines.push(`           mismatched chunk ${c.description}: ${c.source.rows} vs ${c.target.rows} rows`);
     if (t.mismatchedChunks.length > 5) lines.push(`           ... and ${t.mismatchedChunks.length - 5} more chunk(s)`);
     if (t.differingRows) {
@@ -35,6 +36,24 @@ export function formatVerify(report: VerifyReport): string {
       }
     }
   }
+  lines.push("", formatSequences(report));
+  return lines.join("\n");
+}
+
+function formatSequences(report: VerifyReport): string {
+  const behind = report.sequences.filter((s) => s.status === "behind");
+  const unknown = report.sequences.filter((s) => s.status === "unknown");
+  if (report.sequences.length === 0) return "Sequences: none feed the verified tables.";
+  const lines = [
+    behind.length
+      ? `Sequences: ${behind.length} BEHIND the data on target (the next INSERT can fail with a duplicate key)`
+      : `Sequences: all ${report.sequences.length - unknown.length} readable sequence(s) on target are ahead of their data`,
+  ];
+  for (const s of behind) {
+    lines.push(`  BEHIND   ${s.table}.${s.column}: next value ${s.nextValue}, data already at ${s.dataValue}`);
+    lines.push(`           fix (run it yourself): ${s.fix}`);
+  }
+  for (const s of unknown) lines.push(`  UNKNOWN  ${s.table}.${s.column}: ${s.sequence} isn't readable with this role (grant SELECT on it)`);
   return lines.join("\n");
 }
 

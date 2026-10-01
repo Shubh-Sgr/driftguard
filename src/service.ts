@@ -62,7 +62,8 @@ export class PgVouch {
   }
 
   /** F3 (+ F4 when findRows is set) */
-  verifyData(opts: VerifyOptions = {}): Promise<VerifyReport> {
+  async verifyData(opts: VerifyOptions = {}): Promise<VerifyReport> {
+    if (opts.schemas?.length) await this.requireSchemas(opts.schemas);
     return verifyData(this.source, this.target, opts);
   }
 

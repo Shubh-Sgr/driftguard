@@ -1,0 +1,10 @@
+{
+  "description": "Data copied but the sequence was left behind (next INSERT would hit a duplicate key)",
+  "drift": [],
+  "data": {
+    "public.transactions": {}
+  },
+  "sequencesBehind": [
+    "public.transactions.id"
+  ]
+}
