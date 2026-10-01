@@ -8,7 +8,15 @@ export interface TableSpec {
   primaryKey: string[] | null;
   /** Columns hashed, in SOURCE order, so a different column order on target doesn't matter. */
   columns: string[];
+  /** Primary-key columns of a text-like type: they are ordered and compared byte-wise (COLLATE "C"). */
+  textKeys: string[];
 }
+
+// Types whose sort order depends on a collation. Two servers can sort the same text
+// differently (another collation, or the same name on a different glibc/ICU version,
+// common when a database moves between machines or clouds), so for these key columns
+// every ORDER BY and range comparison uses COLLATE "C": plain byte order, identical everywhere.
+const TEXT_LIKE = /^(text|character varying|character|citext|name)\b/;
 
 /**
  * A primary-key range: lower bound inclusive, upper bound exclusive; null = unbounded.
@@ -45,6 +53,7 @@ export function buildTableSpec(source: Table, target: Table): TableSpec | { skip
     sql: qualify(source.schema, source.name),
     primaryKey: source.primaryKey,
     columns: sourceCols.map((c) => c.name),
+    textKeys: (source.primaryKey ?? []).filter((c) => TEXT_LIKE.test(source.columns[c]?.type ?? "")),
   };
 }
 
@@ -52,11 +61,16 @@ export function buildTableSpec(source: Table, target: Table): TableSpec | { skip
 export function sqlParts(spec: TableSpec) {
   const pk = spec.primaryKey ?? [];
   const pkList = pk.map(quoteIdent).join(", ");
+  // Text-like key columns sort byte-wise so both servers agree on order and chunk ranges.
+  // Integer, uuid, timestamp keys are unaffected (and keep using the PK index for ranges).
+  const pkOrder = pk.map((c) => (spec.textKeys.includes(c) ? `${quoteIdent(c)} COLLATE "C"` : quoteIdent(c))).join(", ");
   return {
     pkList,
+    /** Use in every ORDER BY over the key. */
+    pkOrder,
     // Single-column keys compare directly; composite keys use row comparison,
     // which Postgres evaluates lexicographically and can serve from the PK index.
-    pkExpr: pk.length === 1 ? pkList : `(${pkList})`,
+    pkExpr: pk.length === 1 ? pkOrder : `(${pkOrder})`,
     pkAsText: pk.map((c, i) => `${quoteIdent(c)}::text AS k${i}`).join(", "),
     rowExpr: `ROW(${spec.columns.map(quoteIdent).join(", ")})`,
     // ARRAY[...] (not json_build_object) because it has no 100-argument limit.

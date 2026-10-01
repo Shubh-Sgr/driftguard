@@ -98,11 +98,11 @@ export async function findDifferingRows(
 
 /** The key at position floor(count/2) inside the range, via the PK index. */
 async function medianKey(client: pg.PoolClient, spec: TableSpec, range: KeyRange, count: number): Promise<string[]> {
-  const { pkList, pkAsText } = sqlParts(spec);
+  const { pkOrder, pkAsText } = sqlParts(spec);
   const { where, params } = rangeWhere(spec, range);
   params.push(String(Math.floor(count / 2)));
   const { rows } = await client.query(
-    `SELECT ${pkAsText} FROM ${spec.sql} ${where} ORDER BY ${pkList} OFFSET $${params.length} LIMIT 1`,
+    `SELECT ${pkAsText} FROM ${spec.sql} ${where} ORDER BY ${pkOrder} OFFSET $${params.length} LIMIT 1`,
     params,
   );
   // The offset is < count, so a row always exists within the same snapshot.
@@ -144,10 +144,10 @@ interface FetchedRow {
 }
 
 async function fetchRows(client: pg.PoolClient, spec: TableSpec, range: KeyRange): Promise<Map<string, FetchedRow>> {
-  const { pkList, pkAsText, rowValues } = sqlParts(spec);
+  const { pkOrder, pkAsText, rowValues } = sqlParts(spec);
   const { where, params } = rangeWhere(spec, range);
   const { rows } = await client.query(
-    `SELECT ${pkAsText}, ${rowValues} AS v FROM ${spec.sql} ${where} ORDER BY ${pkList}`,
+    `SELECT ${pkAsText}, ${rowValues} AS v FROM ${spec.sql} ${where} ORDER BY ${pkOrder}`,
     params,
   );
   const pk = spec.primaryKey!;
