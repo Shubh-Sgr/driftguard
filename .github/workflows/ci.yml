@@ -27,10 +27,16 @@ jobs:
       - run: npm run build
 
   integration:
-    name: Integration tests + evals (Postgres 16 in Docker)
+    name: Integration tests + lock eval (Postgres ${{ matrix.pg }} in Docker)
     runs-on: ubuntu-latest
     needs: unit
+    strategy:
+      # Every supported major version: catalogs, lock behaviour and pg_dump differ between them.
+      fail-fast: false
+      matrix:
+        pg: [13, 14, 15, 16, 17]
     env:
+      PG_VERSION: ${{ matrix.pg }}
       # A small seed keeps CI fast (~seconds instead of minutes). Tests scale their
       # expectations from this. The 1M-row numbers in the README come from local runs.
       SEED_TRANSACTIONS: "20000"
@@ -52,7 +58,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: eval-results
+          name: eval-results-pg${{ matrix.pg }}
           path: evals/results-ci.*
       - if: always()
         run: npm run db:down

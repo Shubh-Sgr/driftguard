@@ -62,7 +62,8 @@ describe("read-only safety layers", () => {
       canWriteAnyTable: false,
       tableCount: 10,
     });
-    expect(report.serverVersion).toMatch(/^16\./);
+    // CI runs this on every supported major version (PG_VERSION), locally 16 by default.
+    expect(report.serverVersion).toMatch(new RegExp(`^${process.env.PG_VERSION ?? "16"}\\.`));
   });
 });
 

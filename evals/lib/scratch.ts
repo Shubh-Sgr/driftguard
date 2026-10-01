@@ -31,13 +31,25 @@ async function adminQuery(adminUrl: string, sql: string): Promise<void> {
 
 /**
  * Copies the seeded `fintech` database into a fresh scratch database on the same
- * server. STRATEGY FILE_COPY copies data files directly, which takes seconds for the
- * ~500 MB seed (re-seeding would take minutes). Grants and the read-only role's
- * privileges are copied along with the tables.
+ * server. File copy takes seconds for the ~500 MB seed (re-seeding would take minutes).
+ * Grants and the read-only role's privileges are copied along with the tables.
+ * PG 15 made WAL_LOG the default strategy (slow for a big template), so ask for
+ * FILE_COPY there; before 15 file copy is the only strategy and the option doesn't exist.
  */
 export async function createScratchDatabase(adminUrl: string, name: string): Promise<void> {
   await dropScratchDatabase(adminUrl, name);
-  await adminQuery(adminUrl, `CREATE DATABASE ${quoteIdent(name)} TEMPLATE fintech STRATEGY FILE_COPY`);
+  const strategy = (await serverVersionNum(adminUrl)) >= 150_000 ? " STRATEGY FILE_COPY" : "";
+  await adminQuery(adminUrl, `CREATE DATABASE ${quoteIdent(name)} TEMPLATE fintech${strategy}`);
+}
+
+async function serverVersionNum(adminUrl: string): Promise<number> {
+  const client = new pg.Client({ connectionString: adminUrl });
+  await client.connect();
+  try {
+    return Number((await client.query("SHOW server_version_num")).rows[0].server_version_num);
+  } finally {
+    await client.end();
+  }
 }
 
 export async function dropScratchDatabase(adminUrl: string, name: string): Promise<void> {
