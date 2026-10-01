@@ -1,5 +1,5 @@
 {
-  "runAt": "2026-09-30T09:17:00.816Z",
+  "runAt": "2026-10-01T15:53:20.890Z",
   "environment": {
     "node": "v22.23.1",
     "platform": "darwin arm64",
@@ -251,7 +251,7 @@
         "fellBack": false,
         "acceptedBy": null,
         "attempts": [],
-        "steps": 2,
+        "steps": 5,
         "shadow": "pass"
       }
     },
@@ -332,7 +332,15 @@
         "rowsFetched": 78,
         "rowsInMismatchedTables": 2000000,
         "hashQueries": 16,
-        "verifyMs": 6406
+        "verifyMs": 5704,
+        "sequences": {
+          "checked": 1,
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "falsePositives": [],
+          "missed": []
+        }
       }
     },
     {
@@ -355,7 +363,15 @@
         "rowsFetched": 155,
         "rowsInMismatchedTables": 3999997,
         "hashQueries": 32,
-        "verifyMs": 9344
+        "verifyMs": 7294,
+        "sequences": {
+          "checked": 1,
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "falsePositives": [],
+          "missed": []
+        }
       }
     },
     {
@@ -378,7 +394,15 @@
         "rowsFetched": 78,
         "rowsInMismatchedTables": 80000,
         "hashQueries": 16,
-        "verifyMs": 256
+        "verifyMs": 238,
+        "sequences": {
+          "checked": 0,
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "falsePositives": [],
+          "missed": []
+        }
       }
     },
     {
@@ -401,7 +425,15 @@
         "rowsFetched": 0,
         "rowsInMismatchedTables": 0,
         "hashQueries": 0,
-        "verifyMs": 19551
+        "verifyMs": 10354,
+        "sequences": {
+          "checked": 7,
+          "tp": 0,
+          "fp": 0,
+          "fn": 0,
+          "falsePositives": [],
+          "missed": []
+        }
       }
     },
     {
@@ -459,6 +491,189 @@
         "attempts": [],
         "steps": 13,
         "shadow": "pass"
+      }
+    },
+    {
+      "name": "24_view_missing",
+      "description": "View dropped on target",
+      "drift": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "acceptedBy": null,
+        "attempts": [],
+        "steps": 1,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "25_view_changed",
+      "description": "View definition changed on target",
+      "drift": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "acceptedBy": null,
+        "attempts": [],
+        "steps": 1,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "26_function_changed",
+      "description": "Trigger function body changed on target",
+      "drift": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "acceptedBy": null,
+        "attempts": [],
+        "steps": 1,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "27_trigger_missing",
+      "description": "Trigger dropped on target",
+      "drift": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "acceptedBy": null,
+        "attempts": [],
+        "steps": 1,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "28_trigger_disabled",
+      "description": "Trigger disabled on target (its logic silently stops)",
+      "drift": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "acceptedBy": null,
+        "attempts": [],
+        "steps": 1,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "29_enum_label_missing",
+      "description": "Enum type missing a label on target",
+      "drift": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "acceptedBy": null,
+        "attempts": [],
+        "steps": 1,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "30_extension_missing",
+      "description": "Extension not installed on target",
+      "drift": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "acceptedBy": null,
+        "attempts": [],
+        "steps": 1,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "31_rls_policy_missing",
+      "description": "Row-level security policy dropped and RLS turned off on target",
+      "drift": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "rulesPlan": {
+        "author": "rules",
+        "fellBack": false,
+        "acceptedBy": null,
+        "attempts": [],
+        "steps": 2,
+        "shadow": "pass"
+      }
+    },
+    {
+      "name": "32_sequence_behind",
+      "description": "Data copied but the sequence was left behind (next INSERT would hit a duplicate key)",
+      "drift": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "falsePositives": [],
+        "missed": []
+      },
+      "data": {
+        "tablesTp": 0,
+        "tablesFp": 0,
+        "tablesFn": 0,
+        "rowsExpected": 0,
+        "rowsFound": 0,
+        "rowsFalse": 0,
+        "rowsFetched": 0,
+        "rowsInMismatchedTables": 0,
+        "hashQueries": 0,
+        "verifyMs": 4888,
+        "sequences": {
+          "checked": 1,
+          "tp": 1,
+          "fp": 0,
+          "fn": 0,
+          "falsePositives": [],
+          "missed": []
+        }
       }
     }
   ]

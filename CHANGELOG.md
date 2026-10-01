@@ -4,6 +4,23 @@ All notable changes to PgVouch. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+### Added
+- **Drift detection for the objects around the tables:** views and materialized views, functions and procedures, triggers (including a trigger that is disabled on the target), enum types, extensions, and row-level security (policies and the per-table on/off/forced state). Before, a missing audit trigger or a dropped RLS policy was reported as "no drift". The rules plan fixes them in dependency order (extensions and enums, tables, functions, views, triggers, policies, then RLS on), replaces triggers and policies atomically in one `BEGIN ... COMMIT`, and holds back drops of extra objects as contract steps. Extensions, changed materialized views and enums with extra labels are left as named manual steps.
+- **Sequence health check in `verify`:** every identity/serial sequence on the target must be ahead of the largest value in its column. A sequence left behind after copying data makes the next INSERT fail with a duplicate key; `verify` now reports it (exit code 1) with the `setval` statement that fixes it. Also in the MCP tool `verify_data`.
+- `verify --schema <names...>` and a `schemas` input on the MCP tool `verify_data` (unknown schemas are an error, like `diff --schema`).
+- `verify` notes when row-level security limits which rows the read-only role can see, so "identical" isn't mistaken for "every row compared".
+- CI runs the integration tests and the lock-accuracy eval on PostgreSQL 13, 14, 15, 16 and 17. The demo databases take `PG_VERSION` (default 16).
+- Lock rules for `CREATE TRIGGER`, `ENABLE/DISABLE TRIGGER`, `DROP TRIGGER`, `CREATE/ALTER/DROP POLICY`, `ENABLE/DISABLE/FORCE ROW LEVEL SECURITY`, views, materialized views, functions, enum types and extensions, each measured against `pg_locks` in the lock-accuracy eval.
+- Eval scenarios 24-32 (views, functions, triggers, enums, extensions, RLS, a sequence left behind its data).
+
+### Changed
+- **The LLM planner is off by default** (`PGVOUCH_LLM=none`). Nothing is sent to any model, local or remote, unless you set `PGVOUCH_LLM=ollama` or `gemini`.
+- Shadow runs use a Postgres image of the target's major version (a newer server can't be dumped by an older `pg_dump`), and the plan role also owns copied functions and types, so plans can replace them.
+- Drops of extra objects that aren't data (views, functions, triggers, policies, enum types, sequences) are contract-phase steps now, commented out unless `--allow-data-loss`.
+
+### Fixed
+- **Text primary keys could give false mismatches between servers with different collations** (another collation, or the same one on a different glibc/ICU version, common in cloud moves). Key ordering and chunk ranges now use byte order (`COLLATE "C"`) for text-like keys; integer, uuid and timestamp keys are unchanged.
+
 ## [0.3.2] - 2026-09-30
 
 ### Changed
