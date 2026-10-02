@@ -42,7 +42,7 @@ export async function planMigration(opts: PlanOptions): Promise<MigrationPlan> {
     author: "rules",
     model: llm?.id ?? null,
     summary: summarize(drift),
-    steps: await stepsFromChanges(desiredChanges(drift, source), target),
+    steps: await stepsFromChanges(desiredChanges(drift, source, target), target),
     attempts,
     fellBack: fallbackReason !== null,
     fallbackReason,
