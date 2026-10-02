@@ -4,6 +4,8 @@ All notable changes to PgVouch. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-02
+
 ### Fixed
 - **The rollback of a row-level security step could leave the table forced.** Plans set both RLS flags (on/off and forced) even when only one differed, so the suggested rollback flipped the other one too (e.g. turning RLS on, then rolling back, ended with `FORCE ROW LEVEL SECURITY`). A step now changes only the flags that differ, and its rollback restores the target's previous state exactly.
 
@@ -87,7 +89,8 @@ All notable changes to PgVouch. The format follows [Keep a Changelog](https://ke
 
 First public release: schema introspection and drift detection, chunked checksum verification with bisection to the exact differing rows, lock-impact analysis, safe rewrites, a guarded LLM planner with a rules-only fallback, shadow runs, reversibility tags, hashed receipts, an MCP server with 6 read-only tools, and an eval suite.
 
-[Unreleased]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.3.1...v0.3.2
