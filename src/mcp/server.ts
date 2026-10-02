@@ -44,15 +44,17 @@ export function buildMcpServer(dg: PgVouch): McpServer {
     {
       title: "Verify data with chunked checksums",
       description:
-        "Prove that table data is identical on source and target by comparing MD5 hashes of primary-key chunks computed inside Postgres (no rows are transferred). Returns per-table status and the key ranges of mismatched chunks, plus a check that every identity/serial sequence on the target is ahead of its data (a sequence left behind makes the next INSERT fail with a duplicate key). Use find_differing_rows to drill into a mismatched table.",
+        "Prove that table data is identical on source and target by comparing MD5 hashes of primary-key chunks computed inside Postgres (no rows are transferred). Returns per-table status and the key ranges of mismatched chunks, plus a check that every identity/serial sequence on the target is ahead of its data (a sequence left behind makes the next INSERT fail with a duplicate key). If the target is still being replicated to, set recheck: differences are looked at again after a delay and only those that never catch up are reported. Use find_differing_rows to drill into a mismatched table.",
       inputSchema: {
         tables: z.array(z.string()).optional().describe("Tables to verify, e.g. ['transactions']; default all"),
         schemas: z.array(z.string()).optional().describe("Schemas to verify; default ['public']"),
         chunkSize: z.number().int().min(100).max(1_000_000).optional().describe("Rows per chunk; default 10000"),
+        ...RECHECK_INPUT,
       },
       annotations: READ_ONLY,
     },
-    ({ tables, schemas, chunkSize }) => run(() => dg.verifyData({ tables, schemas, chunkSize })),
+    ({ tables, schemas, chunkSize, recheck, recheckDelaySeconds }) =>
+      run(() => dg.verifyData({ tables, schemas, chunkSize, ...recheckOptions(recheck, recheckDelaySeconds) })),
   );
 
   server.registerTool(
@@ -65,12 +67,13 @@ export function buildMcpServer(dg: PgVouch): McpServer {
         table: z.string().describe("Table name, e.g. 'transactions' or 'public.transactions'"),
         maxRows: z.number().int().min(1).max(1000).optional().describe("Stop after this many differing rows; default 100"),
         includeValues: z.boolean().optional().describe("Also return the source/target values of differing rows (may contain personal data); default false"),
+        ...RECHECK_INPUT,
       },
       annotations: READ_ONLY,
     },
-    ({ table, maxRows, includeValues }) =>
+    ({ table, maxRows, includeValues, recheck, recheckDelaySeconds }) =>
       run(async () => {
-        const result = await dg.findDifferingRows(table, { maxRows: maxRows ?? 100 });
+        const result = await dg.findDifferingRows(table, { maxRows: maxRows ?? 100, ...recheckOptions(recheck, recheckDelaySeconds) });
         // Row values can contain personal data (and text that looks like instructions),
         // so they're only sent to the model when explicitly asked for.
         return includeValues ? result : { ...result, differingRows: result.differingRows?.map(withoutValues) };
@@ -138,9 +141,18 @@ export function buildMcpServer(dg: PgVouch): McpServer {
 }
 
 /** Keeps what identifies the difference (kind, primary key, changed columns); drops the values. */
-function withoutValues(row: RowDiff): { kind: RowDiff["kind"]; key: Record<string, string>; columns?: string[] } {
-  return row.kind === "changed" ? { kind: row.kind, key: row.key, columns: row.columns } : { kind: row.kind, key: row.key };
+function withoutValues(row: RowDiff): { kind: RowDiff["kind"]; key: Record<string, string>; columns?: string[]; sourceChanging?: boolean } {
+  const flag = row.sourceChanging ? { sourceChanging: true } : {};
+  return row.kind === "changed" ? { kind: row.kind, key: row.key, columns: row.columns, ...flag } : { kind: row.kind, key: row.key, ...flag };
 }
+
+// Kept small: a tool call waits for every recheck (at most 5 x 60 s).
+const RECHECK_INPUT = {
+  recheck: z.number().int().min(1).max(5).optional().describe("Target still being replicated to: look at differences again up to this many times and report only those that never catch up; default off"),
+  recheckDelaySeconds: z.number().int().min(1).max(60).optional().describe("Wait before each recheck; default 5"),
+};
+
+const recheckOptions = (recheck?: number, delaySeconds?: number) => ({ recheck, recheckDelayMs: (delaySeconds ?? 5) * 1000 });
 
 /** Entry point for `pgvouch mcp`: JSON-RPC over stdin/stdout. */
 export async function startMcpServer(config: Config): Promise<void> {

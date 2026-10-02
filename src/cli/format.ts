@@ -17,18 +17,21 @@ export function formatDrift(report: DriftReport): string {
 }
 
 export function formatVerify(report: VerifyReport): string {
-  const lines = [`Data verification: ${report.identical ? "IDENTICAL" : "DIFFERENCES FOUND"} (${(report.elapsedMs / 1000).toFixed(1)}s)`, ""];
+  const rechecked = report.recheck?.rounds ? `, ${report.recheck.rounds} recheck(s) ${report.recheck.delayMs / 1000}s apart` : "";
+  const lines = [`Data verification: ${report.identical ? "IDENTICAL" : "DIFFERENCES FOUND"} (${(report.elapsedMs / 1000).toFixed(1)}s${rechecked})`, ""];
   for (const t of report.tables) {
     const rows = `${t.sourceRows.toLocaleString("en-US")} / ${t.targetRows.toLocaleString("en-US")} rows`;
     lines.push(`  ${t.status.toUpperCase().padEnd(8)} ${t.table.padEnd(28)} ${t.status === "skipped" ? "" : `${rows}, ${t.chunks} chunk(s)`}`);
     if (t.reason) lines.push(`           ${t.reason}`);
     for (const n of t.notes ?? []) lines.push(`           note: ${n}`);
-    for (const c of t.mismatchedChunks.slice(0, 5)) lines.push(`           mismatched chunk ${c.description}: ${c.source.rows} vs ${c.target.rows} rows`);
+    const firstCheck = t.recheck ? " at the first check" : "";
+    for (const c of t.mismatchedChunks.slice(0, 5)) lines.push(`           mismatched chunk ${c.description}: ${c.source.rows} vs ${c.target.rows} rows${firstCheck}`);
     if (t.mismatchedChunks.length > 5) lines.push(`           ... and ${t.mismatchedChunks.length - 5} more chunk(s)`);
     if (t.differingRows) {
       for (const r of t.differingRows.slice(0, 20)) {
         const key = Object.entries(r.key).map(([k, v]) => `${k}=${v}`).join(", ");
-        lines.push(`           ${r.kind.padEnd(18)} ${key}${r.kind === "changed" ? `  columns: ${r.columns.join(", ")}` : ""}`);
+        const changing = r.sourceChanging ? "  (source still changing)" : "";
+        lines.push(`           ${r.kind.padEnd(18)} ${key}${r.kind === "changed" ? `  columns: ${r.columns.join(", ")}` : ""}${changing}`);
       }
       if (t.differingRows.length > 20) lines.push(`           ... ${t.differingRows.length - 20} more row(s) (use --json)`);
       if (t.bisect) {

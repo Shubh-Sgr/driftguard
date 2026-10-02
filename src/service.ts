@@ -68,7 +68,7 @@ export class PgVouch {
   }
 
   /** F4 for one table */
-  findDifferingRows(table: string, opts: { chunkSize?: number; maxRows?: number } = {}): Promise<TableVerification> {
+  findDifferingRows(table: string, opts: Pick<VerifyOptions, "chunkSize" | "maxRows" | "recheck" | "recheckDelayMs"> = {}): Promise<TableVerification> {
     return findDifferingRowsInTable(this.source, this.target, table, opts);
   }
 

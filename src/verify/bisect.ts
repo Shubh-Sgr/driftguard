@@ -2,7 +2,7 @@ import type pg from "pg";
 import { hashRange, type RangeHash } from "./checksum.js";
 import { rangeWhere, sqlParts, type KeyRange, type TableSpec } from "./table.js";
 
-export type RowDiff =
+export type RowDiff = (
   | { kind: "missing_in_target"; key: Record<string, string>; source: Record<string, string | null> }
   | { kind: "extra_in_target"; key: Record<string, string>; target: Record<string, string | null> }
   | {
@@ -11,7 +11,11 @@ export type RowDiff =
       columns: string[];
       source: Record<string, string | null>;
       target: Record<string, string | null>;
-    };
+    }
+) & {
+  /** Set by a recheck: the source row itself changed between checks, so it may be in flight rather than wrong. */
+  sourceChanging?: boolean;
+};
 
 export interface BisectStats {
   /** Hash queries issued (each one runs on BOTH databases). */
@@ -119,7 +123,11 @@ async function diffRowsInRange(
 ): Promise<RowDiff[]> {
   const [sRows, tRows] = await Promise.all([fetchRows(source, spec, range), fetchRows(target, spec, range)]);
   stats.rowsFetched += sRows.size + tRows.size;
+  return compareRows(spec, sRows, tRows);
+}
 
+/** Compares fetched rows column by column. Rows that are equal on both sides are left out. */
+export function compareRows(spec: TableSpec, sRows: Map<string, FetchedRow>, tRows: Map<string, FetchedRow>): RowDiff[] {
   const diffs: RowDiff[] = [];
   // A key may exist on only one side, so walk the union: source keys in PK order,
   // then keys that exist only on the target.
@@ -138,7 +146,7 @@ async function diffRowsInRange(
   return diffs;
 }
 
-interface FetchedRow {
+export interface FetchedRow {
   key: Record<string, string>;
   values: Record<string, string | null>;
 }
@@ -150,13 +158,49 @@ async function fetchRows(client: pg.PoolClient, spec: TableSpec, range: KeyRange
     `SELECT ${pkAsText}, ${rowValues} AS v FROM ${spec.sql} ${where} ORDER BY ${pkOrder}`,
     params,
   );
+  return toFetchedRows(spec, rows);
+}
+
+/**
+ * Fetches exactly these keys (the rows a recheck looks at again), in batches. Keys are
+ * matched with the same per-column expressions as every other key comparison
+ * (byte-wise for text keys), so a key found before is found again.
+ */
+export async function fetchRowsByKeys(client: pg.PoolClient, spec: TableSpec, keys: Record<string, string>[]): Promise<Map<string, FetchedRow>> {
+  const { pkOrder, pkExpr, pkAsText, rowValues } = sqlParts(spec);
+  const pk = spec.primaryKey!;
+  const out = new Map<string, FetchedRow>();
+  for (let i = 0; i < keys.length; i += KEY_BATCH) {
+    const params: string[] = [];
+    const tuples = keys.slice(i, i + KEY_BATCH).map((key) => {
+      const refs = pk.map((c) => {
+        params.push(key[c]!);
+        return `$${params.length}`;
+      });
+      return pk.length === 1 ? refs[0]! : `(${refs.join(", ")})`;
+    });
+    const { rows } = await client.query(
+      `SELECT ${pkAsText}, ${rowValues} AS v FROM ${spec.sql} WHERE ${pkExpr} IN (${tuples.join(", ")}) ORDER BY ${pkOrder}`,
+      params,
+    );
+    for (const [k, row] of toFetchedRows(spec, rows)) out.set(k, row);
+  }
+  return out;
+}
+
+const KEY_BATCH = 500;
+
+/** The id a row is matched by on both sides: its key values in PK order. */
+export const rowKeyId = (key: Record<string, string>) => Object.values(key).join("\u0000");
+
+function toFetchedRows(spec: TableSpec, rows: Record<string, unknown>[]): Map<string, FetchedRow> {
   const pk = spec.primaryKey!;
   const out = new Map<string, FetchedRow>();
   for (const r of rows) {
     const key = Object.fromEntries(pk.map((c, i) => [c, r[`k${i}`] as string]));
     const values = Object.fromEntries(spec.columns.map((c, i) => [c, (r.v as (string | null)[])[i] ?? null]));
     // \u0000 can't appear in Postgres text, so it's a safe separator for composite keys.
-    out.set(pk.map((_, i) => r[`k${i}`]).join("\u0000"), { key, values });
+    out.set(rowKeyId(key), { key, values });
   }
   return out;
 }
