@@ -1,5 +1,8 @@
 # Two stages: build the TypeScript, then ship only the compiled JS and production deps.
-FROM node:22-alpine AS build
+# The build stage runs on the builder's own platform: its output (JS, plus libpg-query's
+# WASM; no native addons) is the same on every architecture. The final stage only copies
+# files, so building the arm64 image on an amd64 runner needs no CPU emulation.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
