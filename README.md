@@ -80,7 +80,7 @@ flowchart LR
 |---|---|---|
 | F1 | Schema introspection | `pg_catalog` (not `information_schema`, which hides index methods, partial-index predicates and `NOT VALID`) |
 | F2 | Drift detection | A pure `diffSchemas(source, target)` over tables, columns, indexes, constraints, sequences, views, functions, triggers (including disabled ones), enum types, extensions and row-level security: deterministic and sorted, with severity rules, and it never guesses renames |
-| F3 | Data verification | `md5(string_agg(md5(row::text) ORDER BY pk))` per primary-key chunk, inside a `REPEATABLE READ` snapshot with normalized session settings. Text keys are ordered byte-wise (`COLLATE "C"`), so servers with different collations agree. Also checks that every identity/serial sequence on the target is ahead of its data |
+| F3 | Data verification | `md5(string_agg(md5(row::text) ORDER BY pk))` per primary-key chunk, inside a `REPEATABLE READ` snapshot with normalized session settings. Text keys are ordered byte-wise (`COLLATE "C"`), so servers with different collations agree. Also checks that every identity/serial sequence on the target is ahead of its data. On a target still being replicated to, `--recheck` looks at the differences again after a delay and reports only those that never catch up |
 | F4 | Checksum bisection | Merkle-style: split the mismatched chunk at its median key and recurse only into halves whose hashes differ |
 | F5 | Lock analyzer | [libpg-query](https://github.com/launchql/libpg-query-node) (Postgres' own parser, WASM) → rule table → risk from `reltuples` |
 | F6 | Safe rewrites | `CONCURRENTLY`, `NOT VALID` + `VALIDATE`, `UNIQUE ... USING INDEX`, expand/contract, batched `DO` loops with `COMMIT` per batch |
@@ -140,6 +140,7 @@ pgvouch doctor   # must say read_only=true and write privileges: none
 ```bash
 pgvouch diff                                      # schema drift (exit code 1 if any)
 pgvouch verify --rows                             # checksums + exact differing rows
+pgvouch verify --rows --recheck 3                 # target still being replicated to: ignore rows in flight
 pgvouch locks my_migration.sql                    # lock impact per statement, with real table sizes
 pgvouch preflight my_migration.sql                # would it have to wait for locks RIGHT NOW?
 pgvouch rewrite my_migration.sql                  # safe multi-step script
@@ -183,6 +184,7 @@ Every command from Option A works here as `npm run cli -- <command>`. These use 
 ```bash
 npm run cli -- diff                                   # schema drift (exit code 1 if any)
 npm run cli -- verify --rows                          # checksums + exact differing rows
+npm run cli -- verify --rows --recheck 3              # target still being replicated to: ignore rows in flight
 npm run cli -- locks examples/risky-migration.sql     # lock impact per statement
 npm run cli -- preflight examples/risky-migration.sql # would it have to wait for locks RIGHT NOW?
 npm run cli -- rewrite examples/risky-migration.sql   # safe multi-step script
@@ -382,8 +384,8 @@ The demo data is only for trying it out. To use PgVouch for real:
 | Situation | Source → Target | Use |
 |---|---|---|
 | Staging vs production (the data is supposed to differ) | staging → prod | `diff`, `plan`, `shadow` (schema only) |
-| Moving a database (cloud move, version upgrade, blue/green) | old → new | `diff` **and** `verify --rows` (the data should be identical) |
-| Replica / CDC pipeline check | primary → replica | `verify --rows` |
+| Moving a database (cloud move, version upgrade, blue/green) | old → new | `diff` **and** `verify --rows` (the data should be identical); add `--recheck 3` while replication is still running |
+| Replica / CDC pipeline check | primary → replica | `verify --rows --recheck 3` |
 | Reviewing a migration before it runs | (the database it will run on) | `locks`, `rewrite` |
 
 **2. Create a read-only role** on each database (as an admin):
@@ -470,7 +472,8 @@ Or run the same report locally: `pgvouch review --format markdown migrations/*.s
 - With row-level security on, a role without `BYPASSRLS` only sees the rows its policies allow; `verify` then says so in a note on that table.
 - Renames are reported as drop + add, with an advisory `possible_rename` hint. PgVouch never auto-renames.
 - Tables without a primary key: a mismatch is detected, but the rows can't be localized.
-- Verification compares two snapshots. On a live system, run it during a write freeze or once replication has caught up.
+- Verification compares two snapshots, so on a live target rows still in flight differ. `verify --recheck N` looks at those differences again (every `--recheck-delay` seconds, default 5) and keeps only the ones that never catch up. It rechecks only what the first check found, so new writes don't keep a table failing. A row that changes on the source at every check can still be reported; it is marked "source still changing". For a final cutover sign-off, a short write freeze is still the strongest proof.
+- Logical replication doesn't copy sequence values, so on a logical replica `verify` reports them as behind until you set them at cutover. That is correct: it's the step people forget.
 - The lock analyzer knows about 30 statement shapes. Anything else is flagged "not in the rule table", never silently rated safe.
 - Automatic batched backfills need a single integer primary key; otherwise the backfill step becomes a manual template.
 - Shadow runs copy the **schema only**, so they prove the resulting structure, not timing under production load (the lock analyzer covers that).
@@ -489,7 +492,7 @@ Or run the same report locally: `pgvouch review --format markdown migrations/*.s
 ## Development
 
 ```bash
-npm test                  # 191 unit tests, no database needed
+npm test                  # 198 unit tests, no database needed
 npm run test:integration  # needs `npm run db:up` and Docker (shadow runs)
 npm run eval              # all evals → evals/results*.md
 npm run eval -- --only scenarios --llm llama3.2   # include LLM plans (needs Ollama)
