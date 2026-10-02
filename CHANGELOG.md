@@ -4,6 +4,8 @@ All notable changes to PgVouch. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-02
+
 ### Added
 - **The Docker image is multi-arch (amd64 and arm64)**, so it runs natively on Apple Silicon and ARM servers instead of under emulation.
 - **Releases are published from GitHub Actions with npm provenance** (trusted publishing, no npm token stored): each version on npm links to the commit and workflow run that built it. They are staged first and go live only after a maintainer approves them with 2FA, so CI alone can't publish a version.
@@ -82,7 +84,8 @@ All notable changes to PgVouch. The format follows [Keep a Changelog](https://ke
 
 First public release: schema introspection and drift detection, chunked checksum verification with bisection to the exact differing rows, lock-impact analysis, safe rewrites, a guarded LLM planner with a rules-only fallback, shadow runs, reversibility tags, hashed receipts, an MCP server with 6 read-only tools, and an eval suite.
 
-[Unreleased]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.3.0...v0.3.1
