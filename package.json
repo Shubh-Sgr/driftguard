@@ -1,6 +1,6 @@
 {
   "name": "pgvouch",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "MCP server + CLI for safe PostgreSQL migrations: drift detection, lock analysis, safe rewrites, checksum verification.",
   "license": "Apache-2.0",
   "type": "module",
@@ -12,7 +12,7 @@
     "NOTICE"
   ],
   "engines": {
-    "node": ">=20.12"
+    "node": "^20.12.0 || >=21.7.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

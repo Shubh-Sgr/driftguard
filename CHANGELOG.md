@@ -4,6 +4,8 @@ All notable changes to PgVouch. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-02
+
 ### Added
 - **Drift detection for the objects around the tables:** views and materialized views, functions and procedures, triggers (including a trigger that is disabled on the target), enum types, extensions, and row-level security (policies and the per-table on/off/forced state). Before, a missing audit trigger or a dropped RLS policy was reported as "no drift". The rules plan fixes them in dependency order (extensions and enums, tables, functions, views, triggers, policies, then RLS on), replaces triggers and policies atomically in one `BEGIN ... COMMIT`, and holds back drops of extra objects as contract steps. Extensions, changed materialized views and enums with extra labels are left as named manual steps.
 - **Sequence health check in `verify`:** every identity/serial sequence on the target must be ahead of the largest value in its column. A sequence left behind after copying data makes the next INSERT fail with a duplicate key; `verify` now reports it (exit code 1) with the `setval` statement that fixes it. Also in the MCP tool `verify_data`.
@@ -20,6 +22,7 @@ All notable changes to PgVouch. The format follows [Keep a Changelog](https://ke
 - Drops of extra objects that aren't data (views, functions, triggers, policies, enum types, sequences) are contract-phase steps now, commented out unless `--allow-data-loss`.
 
 ### Fixed
+- **Node 21.0–21.6 passed the `engines` check but couldn't run the CLI** (`process.loadEnvFile` arrived in 21.7). `engines` is now `^20.12.0 || >=21.7.0`.
 - **Text primary keys could give false mismatches between servers with different collations** (another collation, or the same one on a different glibc/ICU version, common in cloud moves). Key ordering and chunk ranges now use byte order (`COLLATE "C"`) for text-like keys; integer, uuid and timestamp keys are unchanged.
 
 ## [0.3.2] - 2026-09-30
@@ -71,7 +74,8 @@ All notable changes to PgVouch. The format follows [Keep a Changelog](https://ke
 
 First public release: schema introspection and drift detection, chunked checksum verification with bisection to the exact differing rows, lock-impact analysis, safe rewrites, a guarded LLM planner with a rules-only fallback, shadow runs, reversibility tags, hashed receipts, an MCP server with 6 read-only tools, and an eval suite.
 
-[Unreleased]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.2.0...v0.3.0
