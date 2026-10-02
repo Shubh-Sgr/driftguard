@@ -4,6 +4,9 @@ All notable changes to PgVouch. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+### Fixed
+- **The rollback of a row-level security step could leave the table forced.** Plans set both RLS flags (on/off and forced) even when only one differed, so the suggested rollback flipped the other one too (e.g. turning RLS on, then rolling back, ended with `FORCE ROW LEVEL SECURITY`). A step now changes only the flags that differ, and its rollback restores the target's previous state exactly.
+
 ## [0.4.1] - 2026-10-02
 
 ### Added

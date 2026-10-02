@@ -196,6 +196,25 @@ describe("rules plan for object drift", () => {
     expect(steps[0]!.transactional).toBe(false);
   });
 
+  it.each([
+    // target state, source state, the step, its rollback (back to exactly the target's state)
+    [{ enabled: false, forced: false }, { enabled: true, forced: false }, "ALTER TABLE audit ENABLE ROW LEVEL SECURITY", "ALTER TABLE audit DISABLE ROW LEVEL SECURITY"],
+    [{ enabled: true, forced: true }, { enabled: true, forced: false }, "ALTER TABLE audit NO FORCE ROW LEVEL SECURITY", "ALTER TABLE audit FORCE ROW LEVEL SECURITY"],
+    [
+      { enabled: true, forced: true },
+      { enabled: false, forced: false },
+      "ALTER TABLE audit DISABLE ROW LEVEL SECURITY, NO FORCE ROW LEVEL SECURITY",
+      "ALTER TABLE audit FORCE ROW LEVEL SECURITY;\nALTER TABLE audit ENABLE ROW LEVEL SECURITY",
+    ],
+  ])("changes only the row-level security flags that differ, so the rollback restores the target (%o -> %o)", async (have, want, sql, rollback) => {
+    const s = withObjects();
+    s.tables["public.audit"]!.rowSecurity = want;
+    const t = clone(s);
+    t.tables["public.audit"]!.rowSecurity = have;
+    const [step] = (await plan(s, t)).steps;
+    expect(step).toMatchObject({ sql, rollbackSql: rollback });
+  });
+
   it("leaves a missing extension to a human (it needs a privileged role)", async () => {
     const s = withObjects();
     const t = clone(s);

@@ -22,7 +22,7 @@ export interface DesiredChange {
  * engine (F6) turns it into non-blocking steps afterwards. Keeping the two separate
  * means each is simple and testable on its own.
  */
-export function desiredChanges(drift: DriftReport, source: Schema): DesiredChange[] {
+export function desiredChanges(drift: DriftReport, source: Schema, target?: Schema): DesiredChange[] {
   // Order matters: extensions and enum types before the tables that use them; functions
   // after the tables (SQL functions are checked against them); then views; triggers need
   // their functions; RLS is switched on only after its policies exist, so there is no
@@ -60,7 +60,8 @@ export function desiredChanges(drift: DriftReport, source: Schema): DesiredChang
         for (const p of Object.values(source.policies ?? {}).filter((x) => x.table === item.table)) {
           policies.push({ title: `Create policy ${p.name} on ${item.table}`, sql: p.definition, phase: "expand" });
         }
-        if (t.rowSecurity?.enabled) rls.push(rowSecurity(item.table, t.rowSecurity.forced ? "forced" : "on"));
+        // A new table starts with row-level security off and not forced.
+        if (t.rowSecurity?.enabled) rls.push(rowSecurity(item.table, t.rowSecurity, { enabled: false, forced: false })!);
         break;
       }
       case "table_extra":
@@ -253,9 +254,11 @@ export function desiredChanges(drift: DriftReport, source: Schema): DesiredChang
       case "policy_extra":
         contract.push({ title: `Drop extra policy ${item.name} on ${item.table}`, sql: `DROP POLICY ${ident(item.name)} ON ${tableRef(item.table)}`, phase: "contract" });
         break;
-      case "row_security_changed":
-        rls.push(rowSecurity(item.table, item.from as "off" | "on" | "forced"));
+      case "row_security_changed": {
+        const change = rowSecurity(item.table, source.tables[item.table]!.rowSecurity!, target?.tables[item.table]?.rowSecurity);
+        if (change) rls.push(change);
         break;
+      }
 
       case "possible_rename":
         // Advisory only. The missing/extra column items produce add + (contract) drop.
@@ -287,12 +290,20 @@ function createTrigger(definition: string, table: string, name: string, state: T
   return state === "enabled" ? [create] : [create, triggerState(table, name, state)];
 }
 
-function rowSecurity(table: string, state: "off" | "on" | "forced"): DesiredChange {
-  const t = tableRef(table);
-  const sql = state === "off"
-    ? `ALTER TABLE ${t} DISABLE ROW LEVEL SECURITY, NO FORCE ROW LEVEL SECURITY`
-    : `ALTER TABLE ${t} ENABLE ROW LEVEL SECURITY, ${state === "forced" ? "FORCE" : "NO FORCE"} ROW LEVEL SECURITY`;
-  return { title: `Set row-level security on ${table} to ${state}`, sql, phase: "expand" };
+type RowSecurity = NonNullable<Table["rowSecurity"]>;
+
+/**
+ * Sets only the row-level security flags that differ from the target's (all of them when
+ * the target's state is unknown). A flag that is already right must not be in the step:
+ * its rollback would flip it, leaving the table in a state it was never in.
+ */
+function rowSecurity(table: string, want: RowSecurity, have?: RowSecurity): DesiredChange | null {
+  const parts: string[] = [];
+  if (!have || have.enabled !== want.enabled) parts.push(`${want.enabled ? "ENABLE" : "DISABLE"} ROW LEVEL SECURITY`);
+  if (!have || have.forced !== want.forced) parts.push(`${want.forced ? "FORCE" : "NO FORCE"} ROW LEVEL SECURITY`);
+  if (parts.length === 0) return null;
+  const state = !want.enabled ? "off" : want.forced ? "forced" : "on";
+  return { title: `Set row-level security on ${table} to ${state}`, sql: `ALTER TABLE ${tableRef(table)} ${parts.join(", ")}`, phase: "expand" };
 }
 
 /**
