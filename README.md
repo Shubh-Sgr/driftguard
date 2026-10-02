@@ -445,6 +445,18 @@ Or run the same report locally: `pgvouch review --format markdown migrations/*.s
 
 ## Safety model
 
+**What PgVouch can touch.** Useful for a security review, and for reading supply-chain scanner reports (such as Socket's "network access" or "shell access"):
+
+| | What | When |
+|---|---|---|
+| Network | The source and target databases you configure | Every command that needs a database |
+| | Ollama (`OLLAMA_URL`, local by default) or the Gemini API | Only with `PGVOUCH_LLM=ollama` or `gemini` (off by default) |
+| | A throwaway Postgres container on `127.0.0.1` | `shadow`, and LLM plans (which must pass a shadow run) |
+| Processes | `docker`, started with `execFile` (arguments passed directly, no shell) | Same as above. Nothing else is ever executed |
+| Files | Reads `./.env` and the migration or receipt files you name; writes only the `--out` / `receipt` file you ask for | CLI only. The MCP server reads and writes no files |
+
+There is no telemetry and no install script (`preinstall` / `postinstall`), in PgVouch or in any of its dependencies. From the next release on, versions are published from GitHub Actions with [npm provenance](https://docs.npmjs.com/generating-provenance-statements), so each one on npm links to the commit and workflow run that built it. Scanners also report `eval` and network use inside dependencies of the official MCP SDK (`ajv` compiles JSON schemas to functions; `express` and `hono` serve its HTTP transport, which PgVouch doesn't use: it talks over stdio).
+
 - **Read-only, three layers:** the `pgvouch_ro` role has only `SELECT`, the role defaults to `default_transaction_read_only`, and every connection sets `default_transaction_read_only=on`, `statement_timeout` and `lock_timeout` in its startup packet. That holds even if you hand it a superuser URL; there's an integration test for exactly that.
 - **Never loads a table into memory:** hashes are computed inside Postgres, and only 32-character digests cross the network. Bisection fetches at most 50 rows per side per leaf.
 - **Parameterized queries** for every value. Identifiers come only from the catalog, and they are quoted.

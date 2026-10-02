@@ -4,6 +4,14 @@ All notable changes to PgVouch. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+### Added
+- **The Docker image is multi-arch (amd64 and arm64)**, so it runs natively on Apple Silicon and ARM servers instead of under emulation.
+- **Releases are published from GitHub Actions with npm provenance** (trusted publishing, no npm token stored): each version on npm links to the commit and workflow run that built it.
+- README: what PgVouch can touch (network, processes, files), for security reviews and supply-chain scanner reports.
+
+### Changed
+- A test for hostile HTML in PR review output now uses case-insensitive substring checks (CodeQL `js/bad-tag-filter`); it is stricter than the regex it replaces.
+
 ## [0.4.0] - 2026-10-02
 
 ### Added
