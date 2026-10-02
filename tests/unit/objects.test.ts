@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { describeDrift } from "../../src/diff/describe.js";
 import { diffSchemas } from "../../src/diff/diff.js";
 import { driftItemKey } from "../../src/diff/types.js";
 import type { Schema } from "../../src/introspect/types.js";
@@ -118,6 +119,15 @@ describe("object drift (views, functions, triggers, enums, extensions, RLS)", ()
       "policy_changed:public.audit.audit_read=high",
       "view_changed:public.audit_counts=medium",
     ]);
+  });
+
+  it("says materialized view, not view, for a materialized view", () => {
+    const s = withObjects();
+    s.views!["public.mv"] = { schema: "public", name: "mv", materialized: true, definition: " SELECT 1;" };
+    const t = clone(s);
+    delete t.views!["public.mv"];
+    expect(diffSchemas(s, t).items.map(describeDrift)).toEqual(["materialized view public.mv is missing on target"]);
+    expect(diffSchemas(t, s).items.map(describeDrift)).toEqual(["materialized view public.mv exists only on target"]);
   });
 
   it("doesn't list triggers and policies of a missing table separately", () => {
