@@ -9,6 +9,7 @@ import { verifyReceipt, type SignedReceipt } from "../receipt/receipt.js";
 import { reviewFile, reviewMarkdown, reviewMaxRisk } from "../review/review.js";
 import { rewriteMigration } from "../rewrite/rewrite.js";
 import { PgVouch } from "../service.js";
+import { withoutValues } from "../verify/bisect.js";
 import { VERSION } from "../version.js";
 import { inspectConnection } from "./doctor.js";
 import { formatDrift, formatLocks, formatPreflight, formatShadow, formatVerify } from "./format.js";
@@ -210,11 +211,16 @@ program
   .option("--no-llm", "rules-only plan")
   .option("--shadow", "include a shadow run")
   .option("--out <file>", "receipt file", "pgvouch-receipt.json")
+  .option("--include-values", "also store the values of differing rows (may contain personal data); by default only their keys and changed columns")
   .action((opts) =>
     withPgVouch(async (dg) => {
       const results: Record<string, unknown> = {};
       results.drift = await dg.detectDrift();
-      results.verification = await dg.verifyData({ findRows: true, maxRows: 100 });
+      // A receipt is meant to be attached to tickets and audits, so row values stay out of it unless asked for.
+      const verification = await dg.verifyData({ findRows: true, maxRows: 100 });
+      results.verification = opts.includeValues
+        ? verification
+        : { ...verification, tables: verification.tables.map((t) => ({ ...t, differingRows: t.differingRows?.map(withoutValues) })) };
       if (opts.shadow) {
         const { plan, shadow } = await dg.shadow({ useLlm: opts.llm });
         Object.assign(results, { plan, shadow });

@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { Config } from "../config.js";
 import { renderPlanSql } from "../plan/render.js";
 import { PgVouch } from "../service.js";
-import type { RowDiff } from "../verify/bisect.js";
+import { withoutValues } from "../verify/bisect.js";
 import { VERSION } from "../version.js";
 
 // Every tool is read-only: it reads catalogs/data through the read-only pools and
@@ -138,12 +138,6 @@ export function buildMcpServer(dg: PgVouch): McpServer {
   );
 
   return server;
-}
-
-/** Keeps what identifies the difference (kind, primary key, changed columns); drops the values. */
-function withoutValues(row: RowDiff): { kind: RowDiff["kind"]; key: Record<string, string>; columns?: string[]; sourceChanging?: boolean } {
-  const flag = row.sourceChanging ? { sourceChanging: true } : {};
-  return row.kind === "changed" ? { kind: row.kind, key: row.key, columns: row.columns, ...flag } : { kind: row.kind, key: row.key, ...flag };
 }
 
 // Kept small: a tool call waits for every recheck (at most 5 x 60 s).

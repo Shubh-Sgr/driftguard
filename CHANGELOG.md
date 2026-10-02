@@ -10,6 +10,9 @@ All notable changes to PgVouch. The format follows [Keep a Changelog](https://ke
 - **Shadow runs failed for plans that read a partitioned table**, e.g. a view over it ("permission denied"). Partitioned tables and partitions weren't handed to the plan role, because a rule meant only for sequences owned by a column skipped them.
 - A missing or extra materialized view is described as "materialized view", not "view".
 
+### Changed
+- **Receipts no longer contain row values.** Differing rows are listed by primary key and changed column names, like the MCP tools: a receipt is meant to be attached to tickets and audits, and row values can be personal data. `pgvouch receipt --include-values` keeps them.
+
 ## [0.4.2] - 2026-10-02
 
 ### Fixed

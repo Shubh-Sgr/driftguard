@@ -298,6 +298,8 @@ npm run cli -- receipt-verify receipt.json   # "OK: receipt intact"
 ```
 Edit any value in `receipt.json` and run `receipt-verify` again: it reports `MODIFIED`.
 
+A receipt lists differing rows by primary key and changed columns only, so it can be attached to a ticket without copying personal data. `--include-values` adds the row values.
+
 **10. From an AI assistant (F8):** follow [Use it from an AI assistant (MCP)](#use-it-from-an-ai-assistant-mcp) below, then ask *"Use pgvouch to find schema drift and the differing rows in ledger_entries."*
 
 **11. Reset**
