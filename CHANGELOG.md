@@ -6,7 +6,7 @@ All notable changes to PgVouch. The format follows [Keep a Changelog](https://ke
 
 ### Added
 - **The Docker image is multi-arch (amd64 and arm64)**, so it runs natively on Apple Silicon and ARM servers instead of under emulation.
-- **Releases are published from GitHub Actions with npm provenance** (trusted publishing, no npm token stored): each version on npm links to the commit and workflow run that built it.
+- **Releases are published from GitHub Actions with npm provenance** (trusted publishing, no npm token stored): each version on npm links to the commit and workflow run that built it. They are staged first and go live only after a maintainer approves them with 2FA, so CI alone can't publish a version.
 - README: what PgVouch can touch (network, processes, files), for security reviews and supply-chain scanner reports.
 
 ### Changed

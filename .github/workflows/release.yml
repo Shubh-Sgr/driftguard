@@ -1,9 +1,13 @@
 name: Release
 
-# Publishes to npm when a GitHub release is published (tag vX.Y.Z = package.json version).
+# Stages a release on npm when a GitHub release is published (tag vX.Y.Z = package.json version).
 # Uses npm trusted publishing: no npm token is stored in this repo. npm checks this workflow's
-# OIDC identity and attaches a provenance statement that links the published version to this
-# repository, commit and workflow run (shown on npmjs.com as "Built and signed on GitHub Actions").
+# OIDC identity and attaches a provenance statement that links the version to this repository,
+# commit and workflow run (shown on npmjs.com as "Built and signed on GitHub Actions").
+#
+# Staged, not published: the version goes live only after a maintainer approves it with 2FA
+# (npmjs.com -> pgvouch -> Staged Packages, or `npm stage approve <id>`). The trusted publisher
+# is stage-only, so a compromised workflow or GitHub account can't publish on its own.
 on:
   release:
     types: [published]
@@ -22,8 +26,8 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-      # Trusted publishing needs npm 11.5.1 or newer.
-      - run: npm install -g npm@^11.5.1
+      # Staged publishing needs npm 11.15.0 or newer (trusted publishing: 11.5.1).
+      - run: npm install -g npm@^11.15.0
       # Publishing the wrong commit is the mistake to prevent: the release tag must be the
       # version in package.json (v0.4.1 -> 0.4.1).
       - name: Check the release tag matches package.json
@@ -36,4 +40,4 @@ jobs:
       - run: npm ci
       # prepublishOnly runs the typecheck, the unit tests and a clean build first.
       # A GitHub pre-release goes to the "next" dist-tag, so `npm install pgvouch` doesn't get it.
-      - run: npm publish --provenance --access public ${{ github.event.release.prerelease && '--tag next' || '' }}
+      - run: npm stage publish --provenance --access public ${{ github.event.release.prerelease && '--tag next' || '' }}
