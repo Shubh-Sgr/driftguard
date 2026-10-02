@@ -5,6 +5,7 @@ import type { DriftItem, DriftReport } from "../diff/types.js";
 import { introspect } from "../introspect/introspect.js";
 import type { Schema } from "../introspect/types.js";
 import type { MigrationPlan } from "../plan/types.js";
+import { quoteIdent } from "../sql/ident.js";
 import { parseSql } from "../sql/parse.js";
 import { copySchemaInto, startShadowContainer, type ShadowContainer } from "./docker.js";
 
@@ -90,6 +91,7 @@ export async function shadowRun(opts: ShadowOptions): Promise<ShadowReport> {
   try {
     const planRolePassword = await unavailableOnError("could not prepare the shadow database", async () => {
       await waitForPostgres(container.superuserUrl);
+      await createPolicyRoles(container, await policyRoles(opts.targetUrl, opts.source));
       await copySchemaInto(container, opts.targetUrl);
       return createPlanRole(container);
     });
@@ -177,9 +179,12 @@ async function createPlanRole(container: ShadowContainer): Promise<string> {
                  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
                  WHERE n.nspname NOT LIKE 'pg\\_%' AND n.nspname <> 'information_schema'
                    AND c.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
-                   AND NOT EXISTS (SELECT 1 FROM pg_depend d
+                   -- Skip only sequences owned by a column (they follow their table). Tables
+                   -- have such dependencies too (a partition on its parent, a partitioned table
+                   -- on its key) but must be changed one by one: ownership doesn't cascade.
+                   AND (c.relkind <> 'S' OR NOT EXISTS (SELECT 1 FROM pg_depend d
                                    WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid
-                                     AND d.deptype IN ('a', 'i')) LOOP
+                                     AND d.deptype IN ('a', 'i'))) LOOP
           EXECUTE format('ALTER %s %I.%I OWNER TO ${PLAN_ROLE}',
             CASE r.relkind WHEN 'S' THEN 'SEQUENCE' WHEN 'v' THEN 'VIEW'
                            WHEN 'm' THEN 'MATERIALIZED VIEW' WHEN 'f' THEN 'FOREIGN TABLE'
@@ -219,6 +224,44 @@ async function unavailableOnError<T>(what: string, fn: () => Promise<T>): Promis
     return await fn();
   } catch (err) {
     throw new ShadowUnavailableError(`${what}: ${(err as Error).message}`);
+  }
+}
+
+/**
+ * Roles named by row-level security policies, on the target (its schema copy creates them)
+ * and on the source (the plan creates them). A schema dump has no roles, so without these
+ * a policy like `CREATE POLICY ... TO app_user` fails in the shadow with "role does not exist".
+ */
+async function policyRoles(targetUrl: string, source: Schema): Promise<string[]> {
+  const roles = new Set(Object.values(source.policies ?? {}).flatMap((p) => p.roles ?? []));
+  const client = new pg.Client({ connectionString: targetUrl });
+  try {
+    await client.connect();
+    const { rows } = await client.query<{ rolname: string }>(
+      "SELECT DISTINCT r.rolname FROM pg_policy p JOIN pg_roles r ON r.oid = ANY(p.polroles)",
+    );
+    for (const r of rows) roles.add(r.rolname);
+  } catch {
+    // Copying the schema reports the real problem.
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+  roles.delete("public");
+  return [...roles].sort();
+}
+
+/** Creates the roles as NOLOGIN placeholders with no privileges: names only, so policies resolve. */
+async function createPolicyRoles(container: ShadowContainer, roles: string[]): Promise<void> {
+  if (roles.length === 0) return;
+  const admin = new pg.Client({ connectionString: container.superuserUrl });
+  await admin.connect();
+  try {
+    for (const role of roles) {
+      const { rowCount } = await admin.query("SELECT 1 FROM pg_roles WHERE rolname = $1", [role]);
+      if (!rowCount) await admin.query(`CREATE ROLE ${quoteIdent(role)} NOLOGIN`);
+    }
+  } finally {
+    await admin.end();
   }
 }
 

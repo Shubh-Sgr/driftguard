@@ -20,8 +20,8 @@ export function describeDrift(i: DriftItem): string {
     case "sequence_missing": return `sequence ${i.sequence} is missing on target`;
     case "sequence_extra": return `sequence ${i.sequence} exists only on target`;
     case "sequence_changed": return `sequence ${i.sequence} ${i.field}: ${i.from} -> ${i.to}`;
-    case "view_missing": return `view ${i.name} is missing on target`;
-    case "view_extra": return `view ${i.name} exists only on target`;
+    case "view_missing": return `${i.materialized ? "materialized view" : "view"} ${i.name} is missing on target`;
+    case "view_extra": return `${i.materialized ? "materialized view" : "view"} ${i.name} exists only on target`;
     case "view_changed": return `view ${i.name} has a different definition on target`;
     case "function_missing": return `function ${i.name} is missing on target`;
     case "function_extra": return `function ${i.name} exists only on target`;

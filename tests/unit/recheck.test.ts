@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { RowDiff } from "../../src/verify/bisect.js";
+import { withoutValues, type RowDiff } from "../../src/verify/bisect.js";
 import { settleRows } from "../../src/verify/recheck.js";
 
 const missing = (id: string, amount = "10.00"): RowDiff => ({ kind: "missing_in_target", key: { id }, source: { id, amount } });
@@ -51,5 +51,17 @@ describe("settleRows (lag tolerance)", () => {
     const a: RowDiff = { kind: "missing_in_target", key: { account_id: "1", limit_type: "atm" }, source: { amount: "1" } };
     const b: RowDiff = { kind: "missing_in_target", key: { account_id: "1", limit_type: "daily" }, source: { amount: "1" } };
     expect(settleRows([a, b], [b])).toEqual({ remaining: [b], settled: 1 });
+  });
+});
+
+describe("withoutValues (MCP responses, receipts)", () => {
+  it("keeps the kind, key and changed columns, and drops row values that can be personal data", () => {
+    const rows = [missing("1"), extra("2"), { ...changed("3", "5.00", "4.00"), sourceChanging: true }].map(withoutValues);
+    expect(rows).toEqual([
+      { kind: "missing_in_target", key: { id: "1" } },
+      { kind: "extra_in_target", key: { id: "2" } },
+      { kind: "changed", key: { id: "3" }, columns: ["amount"], sourceChanging: true },
+    ]);
+    expect(JSON.stringify(rows)).not.toMatch(/5\.00|4\.00|10\.00|1\.00/);
   });
 });

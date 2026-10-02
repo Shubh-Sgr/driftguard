@@ -298,6 +298,8 @@ npm run cli -- receipt-verify receipt.json   # "OK: receipt intact"
 ```
 Edit any value in `receipt.json` and run `receipt-verify` again: it reports `MODIFIED`.
 
+A receipt lists differing rows by primary key and changed columns only, so it can be attached to a ticket without copying personal data. `--include-values` adds the row values.
+
 **10. From an AI assistant (F8):** follow [Use it from an AI assistant (MCP)](#use-it-from-an-ai-assistant-mcp) below, then ask *"Use pgvouch to find schema drift and the differing rows in ledger_entries."*
 
 **11. Reset**
@@ -433,7 +435,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: Shubh-Sgr/pgvouch@v0.4.2 # or pin the release's commit SHA
+      - uses: Shubh-Sgr/pgvouch@v0.4.3 # or pin the release's commit SHA
         with:
           paths: migrations/**/*.sql     # one glob per line
           fail-on: high                  # optional: fail the check at this risk
@@ -482,6 +484,7 @@ There is no telemetry and no install script (`preinstall` / `postinstall`), in P
 - Some object drift needs a human: installing or upgrading an extension (it needs a privileged role), a changed materialized view (re-create and refresh), an enum with extra or reordered labels (Postgres can't remove or reorder labels in place), and a view whose columns changed (`CREATE OR REPLACE VIEW` can't drop or retype columns; the shadow run reports it).
 - Text primary keys are compared byte-wise (`COLLATE "C"`) so that servers with different collations agree. Range scans on such keys can't use the primary-key index, so verifying a very large table with a text key is slower than one with an integer or uuid key.
 - With row-level security on, a role without `BYPASSRLS` only sees the rows its policies allow; `verify` then says so in a note on that table.
+- `plan` and `shadow` work on the `public` schema. `diff --schema` and `verify --schema` cover other schemas, but drift there isn't planned yet.
 - Renames are reported as drop + add, with an advisory `possible_rename` hint. PgVouch never auto-renames.
 - Tables without a primary key: a mismatch is detected, but the rows can't be localized.
 - Verification compares two snapshots, so on a live target rows still in flight differ. `verify --recheck N` looks at those differences again (every `--recheck-delay` seconds, default 5) and keeps only the ones that never catch up. It rechecks only what the first check found, so new writes don't keep a table failing. A row that changes on the source at every check can still be reported; it is marked "source still changing". For a final cutover sign-off, a short write freeze is still the strongest proof.

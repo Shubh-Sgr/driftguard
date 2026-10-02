@@ -18,13 +18,31 @@ export function quoteLiteral(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
-// Common reserved words that must be quoted when used as a name.
-const RESERVED = new Set([
-  "all", "and", "any", "array", "as", "asc", "check", "collate", "column", "constraint", "create",
-  "default", "desc", "distinct", "do", "else", "end", "false", "for", "foreign", "from", "grant",
-  "group", "having", "in", "into", "is", "limit", "not", "null", "offset", "on", "or", "order",
-  "primary", "references", "select", "table", "then", "to", "true", "union", "unique", "user",
-  "using", "when", "where", "with",
+// Every keyword that Postgres itself quotes in quote_ident(): reserved, type/function-name and
+// column-name keywords (pg_get_keywords() with catcode <> 'U'), the union of PostgreSQL 13 to 17.
+// Left unquoted, a name like "case", "window" or "current_date" makes the generated SQL invalid.
+const KEYWORDS = new Set([
+  "all", "analyse", "analyze", "and", "any", "array", "as", "asc", "asymmetric",
+  "authorization", "between", "bigint", "binary", "bit", "boolean", "both", "case", "cast",
+  "char", "character", "check", "coalesce", "collate", "collation", "column", "concurrently",
+  "constraint", "create", "cross", "current_catalog", "current_date", "current_role",
+  "current_schema", "current_time", "current_timestamp", "current_user", "dec", "decimal",
+  "default", "deferrable", "desc", "distinct", "do", "else", "end", "except", "exists",
+  "extract", "false", "fetch", "float", "for", "foreign", "freeze", "from", "full", "grant",
+  "greatest", "group", "grouping", "having", "ilike", "in", "initially", "inner", "inout",
+  "int", "integer", "intersect", "interval", "into", "is", "isnull", "join", "json",
+  "json_array", "json_arrayagg", "json_exists", "json_object", "json_objectagg", "json_query",
+  "json_scalar", "json_serialize", "json_table", "json_value", "lateral", "leading", "least",
+  "left", "like", "limit", "localtime", "localtimestamp", "merge_action", "national", "natural",
+  "nchar", "none", "normalize", "not", "notnull", "null", "nullif", "numeric", "offset", "on",
+  "only", "or", "order", "out", "outer", "overlaps", "overlay", "placing", "position",
+  "precision", "primary", "real", "references", "returning", "right", "row", "select",
+  "session_user", "setof", "similar", "smallint", "some", "substring", "symmetric",
+  "system_user", "table", "tablesample", "then", "time", "timestamp", "to", "trailing", "treat",
+  "trim", "true", "union", "unique", "user", "using", "values", "varchar", "variadic",
+  "verbose", "when", "where", "window", "with", "xmlattributes", "xmlconcat", "xmlelement",
+  "xmlexists", "xmlforest", "xmlnamespaces", "xmlparse", "xmlpi", "xmlroot", "xmlserialize",
+  "xmltable",
 ]);
 
 /**
@@ -32,7 +50,7 @@ const RESERVED = new Set([
  * (transactions, not "transactions") while names like "Order" or user stay correct.
  */
 export function ident(name: string): string {
-  return /^[a-z_][a-z0-9_$]*$/.test(name) && !RESERVED.has(name) ? name : quoteIdent(name);
+  return /^[a-z_][a-z0-9_$]*$/.test(name) && !KEYWORDS.has(name) ? name : quoteIdent(name);
 }
 
 /** "public.transactions" -> transactions; other schemas stay qualified. */

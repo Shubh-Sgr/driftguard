@@ -204,3 +204,15 @@ function toFetchedRows(spec: TableSpec, rows: Record<string, unknown>[]): Map<st
   }
   return out;
 }
+
+/** A differing row without its values: the kind, the primary key and the changed column names. */
+export type RowDiffWithoutValues = Pick<RowDiff, "kind" | "key" | "sourceChanging"> & { columns?: string[] };
+
+/**
+ * Keeps what identifies the difference and drops the row values, which can be personal data.
+ * Used wherever a result leaves the terminal: MCP responses and receipts (unless asked for).
+ */
+export function withoutValues(row: RowDiff): RowDiffWithoutValues {
+  const flag = row.sourceChanging ? { sourceChanging: true } : {};
+  return row.kind === "changed" ? { kind: row.kind, key: row.key, columns: row.columns, ...flag } : { kind: row.kind, key: row.key, ...flag };
+}

@@ -273,7 +273,7 @@ export async function introspect(db: pg.Pool | pg.PoolClient | pg.Client, schema
   }
   for (const r of policies.rows) {
     const table = tableKey(r.schema, r.table_name);
-    result.policies![`${table}.${r.name}`] = { table, name: r.name, definition: policyDefinition(table, r) };
+    result.policies![`${table}.${r.name}`] = { table, name: r.name, definition: policyDefinition(table, r), roles: r.roles };
   }
 
   return result;

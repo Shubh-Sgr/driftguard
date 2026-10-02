@@ -109,6 +109,8 @@ export interface Policy {
   name: string;
   /** A canonical CREATE POLICY statement built from pg_policy. */
   definition: string;
+  /** Roles the policy applies to ("public" for PUBLIC). */
+  roles?: string[];
 }
 
 export interface Schema {
