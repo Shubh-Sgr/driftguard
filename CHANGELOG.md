@@ -4,6 +4,8 @@ All notable changes to PgVouch. The format follows [Keep a Changelog](https://ke
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-10-02
+
 ### Fixed
 - **Names that are Postgres keywords made generated SQL invalid.** Only a short hand-written list of reserved words was quoted, so a table or column named `case`, `window`, `both`, `binary`, `current_date` (53 keywords in all) produced `ALTER TABLE window ...`: `plan`, `shadow` and the MCP `plan_migration` failed with a syntax error, and `rewrite` produced a script that couldn't run. Every keyword Postgres itself quotes is now quoted (the full list from PostgreSQL 13 to 17), and a test checks that each one gives SQL Postgres' parser accepts.
 - **Shadow runs failed on targets with row-level security policies for named roles.** A schema dump has no roles, so copying a target with `CREATE POLICY ... TO app_user` failed with "role does not exist", and shadow runs (and so LLM plans) couldn't run at all. The roles named by policies on the target and source are now created in the shadow container first, as placeholders without login or privileges.
@@ -98,7 +100,8 @@ All notable changes to PgVouch. The format follows [Keep a Changelog](https://ke
 
 First public release: schema introspection and drift detection, chunked checksum verification with bisection to the exact differing rows, lock-impact analysis, safe rewrites, a guarded LLM planner with a rules-only fallback, shadow runs, reversibility tags, hashed receipts, an MCP server with 6 read-only tools, and an eval suite.
 
-[Unreleased]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Shubh-Sgr/pgvouch/compare/v0.3.2...v0.4.0

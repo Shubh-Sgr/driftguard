@@ -435,7 +435,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: Shubh-Sgr/pgvouch@v0.4.2 # or pin the release's commit SHA
+      - uses: Shubh-Sgr/pgvouch@v0.4.3 # or pin the release's commit SHA
         with:
           paths: migrations/**/*.sql     # one glob per line
           fail-on: high                  # optional: fail the check at this risk
