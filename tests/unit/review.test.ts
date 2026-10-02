@@ -48,7 +48,8 @@ describe("reviewMarkdown", () => {
     expect(md).toContain("````sql\n"); // one backtick longer than the ``` in the name
     // Outside the code block, nothing from the SQL is raw.
     const outsideFences = md.split(/^````sql$[\s\S]*?^````$/m).join("");
-    expect(outsideFences).not.toMatch(/<script>|@octocat|<b>/);
+    // Plain substring checks, case-insensitive: catches <SCRIPT>, <script src=...>, </script> too.
+    for (const raw of ["<script", "</script", "@octocat", "<b>"]) expect(outsideFences.toLowerCase()).not.toContain(raw);
     expect(md).toContain("<script>alert(1)</script>"); // still shown, but only inside the code block
   });
 
