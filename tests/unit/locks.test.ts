@@ -98,9 +98,34 @@ describe("lock rule table (F5)", () => {
   });
 
   it("does not pretend unknown statements are safe", async () => {
-    const s = await one("CREATE EXTENSION pg_trgm");
+    const s = await one("CREATE PUBLICATION pub FOR TABLE transactions");
     expect(s.notes.join()).toMatch(/not in PgVouch's lock rule table/);
   });
+
+  it.each([
+    ["CREATE TRIGGER t1 BEFORE INSERT ON transactions FOR EACH ROW EXECUTE FUNCTION f()", "SHARE ROW EXCLUSIVE", "public.transactions"],
+    ["ALTER TABLE transactions DISABLE TRIGGER t1", "SHARE ROW EXCLUSIVE", "public.transactions"],
+    ["ALTER TABLE transactions ENABLE ALWAYS TRIGGER t1", "SHARE ROW EXCLUSIVE", "public.transactions"],
+    ["DROP TRIGGER t1 ON transactions", "ACCESS EXCLUSIVE", "public.transactions"],
+    ["CREATE POLICY p ON transactions FOR SELECT USING (true)", "ACCESS EXCLUSIVE", "public.transactions"],
+    ["DROP POLICY p ON transactions", "ACCESS EXCLUSIVE", "public.transactions"],
+    ["ALTER TABLE transactions ENABLE ROW LEVEL SECURITY", "ACCESS EXCLUSIVE", "public.transactions"],
+    ["CREATE OR REPLACE VIEW v AS SELECT 1", "ACCESS EXCLUSIVE", "public.v"],
+  ])("%s -> %s", async (sql, mode, table) => {
+    const s = await one(sql);
+    expect(s.locks).toEqual([{ table, mode }]);
+    expect(s.notes.join()).not.toMatch(/not in .*rule table/);
+  });
+
+  it.each(["CREATE VIEW v AS SELECT 1", "CREATE FUNCTION f() RETURNS int LANGUAGE sql AS 'SELECT 1'", "CREATE TYPE s AS ENUM ('a')", "ALTER TYPE s ADD VALUE 'b'", "DROP ROUTINE f()"])(
+    "%s takes no table lock and is known",
+    async (sql) => {
+      const s = await one(sql);
+      expect(s.locks).toEqual([]);
+      expect(s.risk).toBe("low");
+      expect(s.notes.join()).not.toMatch(/not in .*rule table/);
+    },
+  );
 });
 
 describe("risk helpers", () => {

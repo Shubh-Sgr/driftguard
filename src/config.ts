@@ -11,8 +11,10 @@ const EnvSchema = z.object({
   TARGET_DATABASE_URL: postgresUrl,
   // Env vars are strings, so coerce to a number before validating.
   PGVOUCH_STATEMENT_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
-  // Planner LLM (F7). "none" = rules-only plans; nothing is sent anywhere.
-  PGVOUCH_LLM: z.enum(["ollama", "gemini", "none"]).default("ollama"),
+  // Planner LLM (F7). "none" = rules-only plans; nothing is sent anywhere. It is the
+  // default: a tool that teams run on company databases must never contact a model
+  // (even a local one) unless someone turned that on explicitly.
+  PGVOUCH_LLM: z.enum(["ollama", "gemini", "none"]).default("none"),
   OLLAMA_URL: z.string().default("http://localhost:11434"),
   OLLAMA_MODEL: z.string().default("llama3.2"),
   GEMINI_API_KEY: z.string().optional(),

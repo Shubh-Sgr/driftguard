@@ -1,6 +1,6 @@
 import type { DriftReport } from "../diff/types.js";
-import type { Column, Schema, Table } from "../introspect/types.js";
-import { ident, tableRef } from "../sql/ident.js";
+import type { Column, Schema, Table, TriggerState } from "../introspect/types.js";
+import { ident, quoteLiteral, tableRef } from "../sql/ident.js";
 
 /** One raw DDL statement that fixes (part of) the drift, before safe rewriting. */
 export interface DesiredChange {
@@ -9,6 +9,11 @@ export interface DesiredChange {
   phase: "expand" | "contract";
   /** A comment for a human instead of SQL (e.g. primary key changes). */
   manual?: boolean;
+  /**
+   * Run exactly as written, as one step. For BEGIN ... COMMIT blocks that replace a
+   * trigger or policy atomically (the safe-rewrite pass would split them apart).
+   */
+  verbatim?: boolean;
 }
 
 /**
@@ -18,9 +23,19 @@ export interface DesiredChange {
  * means each is simple and testable on its own.
  */
 export function desiredChanges(drift: DriftReport, source: Schema): DesiredChange[] {
+  // Order matters: extensions and enum types before the tables that use them; functions
+  // after the tables (SQL functions are checked against them); then views; triggers need
+  // their functions; RLS is switched on only after its policies exist, so there is no
+  // moment where RLS is on with no policy (which would block every non-owner).
+  const early: DesiredChange[] = [];
   const creates: DesiredChange[] = [];
   const changes: DesiredChange[] = [];
   const foreignKeys: DesiredChange[] = [];
+  const functions: DesiredChange[] = [];
+  const views: DesiredChange[] = [];
+  const triggers: DesiredChange[] = [];
+  const policies: DesiredChange[] = [];
+  const rls: DesiredChange[] = [];
   const contract: DesiredChange[] = [];
 
   const newTables = new Set(drift.items.filter((i) => i.kind === "table_missing").map((i) => (i as { table: string }).table));
@@ -38,6 +53,14 @@ export function desiredChanges(drift: DriftReport, source: Schema): DesiredChang
         for (const c of Object.values(t.constraints).filter((c) => c.type === "foreign_key")) {
           foreignKeys.push({ title: `Add foreign key ${c.name}`, sql: `ALTER TABLE ${tableRef(item.table)} ADD CONSTRAINT ${ident(c.name)} ${c.definition}`, phase: "expand" });
         }
+        // Its triggers, policies and row-level security come with it.
+        for (const tr of Object.values(source.triggers ?? {}).filter((x) => x.table === item.table)) {
+          triggers.push(...createTrigger(tr.definition, tr.table, tr.name, tr.state));
+        }
+        for (const p of Object.values(source.policies ?? {}).filter((x) => x.table === item.table)) {
+          policies.push({ title: `Create policy ${p.name} on ${item.table}`, sql: p.definition, phase: "expand" });
+        }
+        if (t.rowSecurity?.enabled) rls.push(rowSecurity(item.table, t.rowSecurity.forced ? "forced" : "on"));
         break;
       }
       case "table_extra":
@@ -137,13 +160,164 @@ export function desiredChanges(drift: DriftReport, source: Schema): DesiredChang
         break;
       }
 
+      case "extension_missing": {
+        const e = source.extensions?.[item.name];
+        const clause = e ? ` WITH SCHEMA ${ident(e.schema)} VERSION ${quoteLiteral(e.version)}` : "";
+        early.push(manual(`Install extension ${item.name}`, `-- MANUAL (needs a privileged role): CREATE EXTENSION IF NOT EXISTS ${ident(item.name)}${clause};`));
+        break;
+      }
+      case "extension_changed":
+        early.push(manual(`Update extension ${item.name}`, `-- MANUAL (needs a privileged role; check the extension's upgrade notes): ALTER EXTENSION ${ident(item.name)} UPDATE TO ${quoteLiteral(item.from)};`));
+        break;
+      case "extension_extra":
+        contract.push(manual(`Remove extra extension ${item.name}`, `-- CONTRACT (manual, needs a privileged role): DROP EXTENSION ${ident(item.name)};`, "contract"));
+        break;
+
+      case "enum_missing": {
+        const labels = source.enums![item.name]!.labels.map(quoteLiteral).join(", ");
+        early.push({ title: `Create enum type ${item.name}`, sql: `CREATE TYPE ${tableRef(item.name)} AS ENUM (${labels})`, phase: "expand" });
+        break;
+      }
+      case "enum_changed":
+        early.push(...enumLabels(item.name, item.from, item.to));
+        break;
+      case "enum_extra":
+        contract.push({ title: `Drop extra enum type ${item.name}`, sql: `DROP TYPE ${tableRef(item.name)}`, phase: "contract" });
+        break;
+
+      case "function_missing":
+      case "function_changed":
+        // pg_get_functiondef() prints a complete CREATE OR REPLACE statement.
+        functions.push({ title: `${item.kind === "function_missing" ? "Create" : "Replace"} function ${item.name}`, sql: source.routines![item.name]!.definition, phase: "expand" });
+        break;
+      case "function_extra":
+        contract.push({ title: `Drop extra function ${item.name}`, sql: `DROP ROUTINE ${routineRef(item.name)}`, phase: "contract" });
+        break;
+
+      case "view_missing":
+      case "view_changed": {
+        const v = source.views![item.name]!;
+        const query = v.definition.trim().replace(/;$/, "");
+        if (v.materialized) {
+          views.push(item.kind === "view_missing"
+            ? { title: `Create materialized view ${item.name}`, sql: `CREATE MATERIALIZED VIEW ${tableRef(item.name)} AS ${query}`, phase: "expand" }
+            : manual(`Rebuild materialized view ${item.name}`, `-- MANUAL: materialized view ${item.name} differs. Re-create it (DROP + CREATE, then REFRESH) at a quiet time; its dependants must be re-created too.`));
+        } else {
+          // CREATE OR REPLACE keeps dependent views; it fails (and the shadow run says so)
+          // if a column was removed or retyped, which then needs a manual DROP + CREATE.
+          views.push({ title: `${item.kind === "view_missing" ? "Create" : "Replace"} view ${item.name}`, sql: `CREATE OR REPLACE VIEW ${tableRef(item.name)} AS ${query}`, phase: "expand" });
+        }
+        break;
+      }
+      case "view_extra":
+        contract.push({ title: `Drop extra view ${item.name}`, sql: `DROP ${item.materialized ? "MATERIALIZED VIEW" : "VIEW"} ${tableRef(item.name)}`, phase: "contract" });
+        break;
+
+      case "trigger_missing": {
+        const tr = source.triggers![`${item.table}.${item.name}`]!;
+        triggers.push(...createTrigger(tr.definition, item.table, item.name, tr.state));
+        break;
+      }
+      case "trigger_changed": {
+        const tr = source.triggers![`${item.table}.${item.name}`]!;
+        if (!item.from.startsWith("CREATE")) {
+          triggers.push(triggerState(item.table, item.name, tr.state));
+        } else {
+          // Drop + create in one transaction: never a moment without the trigger.
+          const state = tr.state === "enabled" ? [] : [triggerState(item.table, item.name, tr.state).sql];
+          triggers.push({
+            title: `Replace trigger ${item.name} on ${item.table}`,
+            sql: ["BEGIN", `DROP TRIGGER ${ident(item.name)} ON ${tableRef(item.table)}`, tr.definition, ...state, "COMMIT"].join(";\n"),
+            phase: "expand",
+            verbatim: true,
+          });
+        }
+        break;
+      }
+      case "trigger_extra":
+        contract.push({ title: `Drop extra trigger ${item.name} on ${item.table}`, sql: `DROP TRIGGER ${ident(item.name)} ON ${tableRef(item.table)}`, phase: "contract" });
+        break;
+
+      case "policy_missing":
+        policies.push({ title: `Create policy ${item.name} on ${item.table}`, sql: source.policies![`${item.table}.${item.name}`]!.definition, phase: "expand" });
+        break;
+      case "policy_changed":
+        // Drop + create in one transaction: never a moment with the wrong access rules.
+        policies.push({
+          title: `Replace policy ${item.name} on ${item.table}`,
+          sql: ["BEGIN", `DROP POLICY ${ident(item.name)} ON ${tableRef(item.table)}`, item.from, "COMMIT"].join(";\n"),
+          phase: "expand",
+          verbatim: true,
+        });
+        break;
+      case "policy_extra":
+        contract.push({ title: `Drop extra policy ${item.name} on ${item.table}`, sql: `DROP POLICY ${ident(item.name)} ON ${tableRef(item.table)}`, phase: "contract" });
+        break;
+      case "row_security_changed":
+        rls.push(rowSecurity(item.table, item.from as "off" | "on" | "forced"));
+        break;
+
       case "possible_rename":
         // Advisory only. The missing/extra column items produce add + (contract) drop.
         break;
     }
   }
 
-  return [...creates, ...changes, ...foreignKeys, ...contract];
+  return [...early, ...creates, ...changes, ...foreignKeys, ...functions, ...views, ...triggers, ...policies, ...rls, ...contract];
+}
+
+function manual(title: string, sql: string, phase: DesiredChange["phase"] = "expand"): DesiredChange {
+  return { title, sql, phase, manual: true };
+}
+
+/** "public.fn(integer, text)" -> public.fn(integer, text), quoting the schema and name. */
+function routineRef(key: string): string {
+  const open = key.indexOf("(");
+  return `${tableRef(key.slice(0, open))}${key.slice(open)}`;
+}
+
+const TRIGGER_STATE_SQL: Record<TriggerState, string> = { enabled: "ENABLE", disabled: "DISABLE", replica: "ENABLE REPLICA", always: "ENABLE ALWAYS" };
+
+function triggerState(table: string, name: string, state: TriggerState): DesiredChange {
+  return { title: `Set trigger ${name} on ${table} to ${state}`, sql: `ALTER TABLE ${tableRef(table)} ${TRIGGER_STATE_SQL[state]} TRIGGER ${ident(name)}`, phase: "expand" };
+}
+
+function createTrigger(definition: string, table: string, name: string, state: TriggerState): DesiredChange[] {
+  const create: DesiredChange = { title: `Create trigger ${name} on ${table}`, sql: definition, phase: "expand" };
+  return state === "enabled" ? [create] : [create, triggerState(table, name, state)];
+}
+
+function rowSecurity(table: string, state: "off" | "on" | "forced"): DesiredChange {
+  const t = tableRef(table);
+  const sql = state === "off"
+    ? `ALTER TABLE ${t} DISABLE ROW LEVEL SECURITY, NO FORCE ROW LEVEL SECURITY`
+    : `ALTER TABLE ${t} ENABLE ROW LEVEL SECURITY, ${state === "forced" ? "FORCE" : "NO FORCE"} ROW LEVEL SECURITY`;
+  return { title: `Set row-level security on ${table} to ${state}`, sql, phase: "expand" };
+}
+
+/**
+ * Adds the labels the target lacks, each at its position in the source order. Postgres
+ * can add enum labels in place but can't remove or reorder them, so a target with extra
+ * labels or a different order needs a human (re-create the type).
+ */
+function enumLabels(key: string, source: string[], target: string[]): DesiredChange[] {
+  const extra = target.filter((l) => !source.includes(l));
+  const order = target.filter((l) => source.includes(l));
+  const sameOrder = order.every((l, i) => i === 0 || source.indexOf(l) > source.indexOf(order[i - 1]!));
+  if (extra.length || !sameOrder) {
+    return [manual(`Fix enum type ${key}`, `-- MANUAL: enum type ${key} on target has labels the source doesn't, or a different order. Postgres can't remove or reorder enum labels in place; re-create the type and the columns that use it.`)];
+  }
+  const have = [...target];
+  const out: DesiredChange[] = [];
+  for (const [i, label] of source.entries()) {
+    if (have.includes(label)) continue;
+    const before = source.slice(0, i).reverse().find((l) => have.includes(l));
+    const after = source.slice(i + 1).find((l) => have.includes(l));
+    const where = before !== undefined ? ` AFTER ${quoteLiteral(before)}` : after !== undefined ? ` BEFORE ${quoteLiteral(after)}` : "";
+    out.push({ title: `Add label ${label} to enum type ${key}`, sql: `ALTER TYPE ${tableRef(key)} ADD VALUE IF NOT EXISTS ${quoteLiteral(label)}${where}`, phase: "expand" });
+    have.splice(before !== undefined ? have.indexOf(before) + 1 : after !== undefined ? have.indexOf(after) : have.length, 0, label);
+  }
+  return out;
 }
 
 function createTable(t: Table): string {

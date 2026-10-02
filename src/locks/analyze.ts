@@ -257,6 +257,38 @@ function effectOf(stmt: ParsedStatement, schema: Schema | undefined, checks: Not
       return effect("ALTER SEQUENCE");
     case "CommentStmt":
       return effect("COMMENT");
+
+    case "CreateTrigStmt":
+      // Blocks writes while the trigger is added (no scan): reads continue.
+      return effect(n.replace ? "CREATE OR REPLACE TRIGGER" : "CREATE TRIGGER", {
+        locks: [{ table: rangeVarName(n.relation), mode: "SHARE ROW EXCLUSIVE" }],
+      });
+    case "CreatePolicyStmt":
+    case "AlterPolicyStmt":
+      return effect(stmt.type === "CreatePolicyStmt" ? "CREATE POLICY" : "ALTER POLICY", {
+        locks: [{ table: rangeVarName(n.table), mode: "ACCESS EXCLUSIVE" }],
+        notes: ["Metadata-only, but it changes which rows each role can see or write."],
+      });
+    case "ViewStmt":
+      // A new view has no traffic; replacing one locks the view (not its tables).
+      return effect(n.replace ? "CREATE OR REPLACE VIEW" : "CREATE VIEW", {
+        locks: n.replace ? [{ table: rangeVarName(n.view), mode: "ACCESS EXCLUSIVE" }] : [],
+      });
+    case "CreateTableAsStmt":
+      return effect(n.objtype === "OBJECT_MATVIEW" ? "CREATE MATERIALIZED VIEW" : "CREATE TABLE AS", {
+        notes: ["Runs its query once to fill the new relation: only read locks on the source tables, but it can take long."],
+      });
+    case "CreateFunctionStmt":
+      return effect(n.is_procedure ? "CREATE PROCEDURE" : "CREATE FUNCTION");
+    case "CreateEnumStmt":
+      return effect("CREATE TYPE");
+    case "AlterEnumStmt":
+      return effect("ALTER TYPE ... ADD VALUE", { notes: ["A new label can't be used in the same transaction that adds it."] });
+    case "CreateExtensionStmt":
+    case "AlterExtensionStmt":
+      return effect(stmt.type === "CreateExtensionStmt" ? "CREATE EXTENSION" : "ALTER EXTENSION", {
+        notes: ["Usually needs a privileged role; an extension's install or upgrade script can take its own locks."],
+      });
     default:
       return effect(stmt.type, {
         // Unknown to our rule table: say so instead of pretending it's safe.
@@ -358,6 +390,29 @@ function alterCmdEffect(table: string, cmd: AstNode, schema: Schema | undefined,
     case "AT_DropConstraint":
       return effect(op("DROP CONSTRAINT"), { locks: accessExclusive });
 
+    case "AT_EnableTrig":
+    case "AT_EnableAlwaysTrig":
+    case "AT_EnableReplicaTrig":
+    case "AT_DisableTrig":
+    case "AT_EnableTrigAll":
+    case "AT_DisableTrigAll":
+    case "AT_EnableTrigUser":
+    case "AT_DisableTrigUser":
+      // ENABLE / DISABLE TRIGGER takes SHARE ROW EXCLUSIVE (docs): blocks writes, not reads.
+      return effect(op(cmd.subtype.startsWith("AT_Disable") ? "DISABLE TRIGGER" : "ENABLE TRIGGER"), {
+        locks: [{ table, mode: "SHARE ROW EXCLUSIVE" }],
+        notes: cmd.subtype.startsWith("AT_Disable") ? ["A disabled trigger silently skips its logic for every write until it is enabled again."] : [],
+      });
+
+    case "AT_EnableRowSecurity":
+    case "AT_DisableRowSecurity":
+    case "AT_ForceRowSecurity":
+    case "AT_NoForceRowSecurity":
+      return effect(op(cmd.subtype.replace("AT_", "").replace(/([a-z])([A-Z])/g, "$1 $2").toUpperCase()), {
+        locks: accessExclusive,
+        notes: ["Metadata-only, but it changes which rows non-owner roles can see."],
+      });
+
     case "AT_SetStatistics":
     case "AT_SetOptions":
     case "AT_ResetOptions":
@@ -436,6 +491,23 @@ function dropEffect(n: AstNode, schema?: Schema): Effect {
           locks: tables.map((t) => ({ table: t, mode: "ACCESS EXCLUSIVE" as LockMode })),
           notes: ["Use DROP INDEX CONCURRENTLY to avoid blocking the table."],
         });
+  }
+  if (n.removeType === "OBJECT_TRIGGER" || n.removeType === "OBJECT_POLICY") {
+    // "table.trigger" / "schema.table.policy": the lock is on the table.
+    const tables = (n.objects ?? []).map((o: AstNode) => qualify(stringList(o.List?.items).slice(0, -1).join(".")));
+    return effect(n.removeType === "OBJECT_TRIGGER" ? "DROP TRIGGER" : "DROP POLICY", {
+      locks: tables.map((t: string) => ({ table: t, mode: "ACCESS EXCLUSIVE" as LockMode })),
+    });
+  }
+  if (n.removeType === "OBJECT_VIEW" || n.removeType === "OBJECT_MATVIEW") {
+    return effect(n.removeType === "OBJECT_VIEW" ? "DROP VIEW" : "DROP MATERIALIZED VIEW", {
+      locks: names.map((v) => ({ table: qualify(v), mode: "ACCESS EXCLUSIVE" as LockMode })),
+    });
+  }
+  if (["OBJECT_FUNCTION", "OBJECT_PROCEDURE", "OBJECT_ROUTINE", "OBJECT_TYPE"].includes(n.removeType)) {
+    return effect(`DROP ${String(n.removeType).replace("OBJECT_", "")}`, {
+      notes: ["Takes no table lock, but fails (or, with CASCADE, drops more) if other objects depend on it."],
+    });
   }
   return effect(`DROP ${String(n.removeType).replace("OBJECT_", "")}`, {
     notes: ["Not in the lock rule table; review manually."],

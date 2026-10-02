@@ -118,5 +118,29 @@
   {
     "sql": "REINDEX INDEX merchants_pkey",
     "table": "merchants"
+  },
+  {
+    "sql": "CREATE TRIGGER eval_tr BEFORE UPDATE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_set_created_at()",
+    "table": "audit_log"
+  },
+  {
+    "sql": "ALTER TABLE audit_log DISABLE TRIGGER audit_log_created_at",
+    "table": "audit_log"
+  },
+  {
+    "sql": "DROP TRIGGER audit_log_created_at ON audit_log",
+    "table": "audit_log"
+  },
+  {
+    "sql": "CREATE POLICY eval_pol ON audit_log FOR SELECT USING (true)",
+    "table": "audit_log"
+  },
+  {
+    "sql": "DROP POLICY audit_log_read ON audit_log",
+    "table": "audit_log"
+  },
+  {
+    "sql": "ALTER TABLE accounts ENABLE ROW LEVEL SECURITY",
+    "table": "accounts"
   }
 ]

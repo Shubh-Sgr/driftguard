@@ -17,17 +17,21 @@ export function formatDrift(report: DriftReport): string {
 }
 
 export function formatVerify(report: VerifyReport): string {
-  const lines = [`Data verification: ${report.identical ? "IDENTICAL" : "DIFFERENCES FOUND"} (${(report.elapsedMs / 1000).toFixed(1)}s)`, ""];
+  const rechecked = report.recheck?.rounds ? `, ${report.recheck.rounds} recheck(s) ${report.recheck.delayMs / 1000}s apart` : "";
+  const lines = [`Data verification: ${report.identical ? "IDENTICAL" : "DIFFERENCES FOUND"} (${(report.elapsedMs / 1000).toFixed(1)}s${rechecked})`, ""];
   for (const t of report.tables) {
     const rows = `${t.sourceRows.toLocaleString("en-US")} / ${t.targetRows.toLocaleString("en-US")} rows`;
     lines.push(`  ${t.status.toUpperCase().padEnd(8)} ${t.table.padEnd(28)} ${t.status === "skipped" ? "" : `${rows}, ${t.chunks} chunk(s)`}`);
     if (t.reason) lines.push(`           ${t.reason}`);
-    for (const c of t.mismatchedChunks.slice(0, 5)) lines.push(`           mismatched chunk ${c.description}: ${c.source.rows} vs ${c.target.rows} rows`);
+    for (const n of t.notes ?? []) lines.push(`           note: ${n}`);
+    const firstCheck = t.recheck ? " at the first check" : "";
+    for (const c of t.mismatchedChunks.slice(0, 5)) lines.push(`           mismatched chunk ${c.description}: ${c.source.rows} vs ${c.target.rows} rows${firstCheck}`);
     if (t.mismatchedChunks.length > 5) lines.push(`           ... and ${t.mismatchedChunks.length - 5} more chunk(s)`);
     if (t.differingRows) {
       for (const r of t.differingRows.slice(0, 20)) {
         const key = Object.entries(r.key).map(([k, v]) => `${k}=${v}`).join(", ");
-        lines.push(`           ${r.kind.padEnd(18)} ${key}${r.kind === "changed" ? `  columns: ${r.columns.join(", ")}` : ""}`);
+        const changing = r.sourceChanging ? "  (source still changing)" : "";
+        lines.push(`           ${r.kind.padEnd(18)} ${key}${r.kind === "changed" ? `  columns: ${r.columns.join(", ")}` : ""}${changing}`);
       }
       if (t.differingRows.length > 20) lines.push(`           ... ${t.differingRows.length - 20} more row(s) (use --json)`);
       if (t.bisect) {
@@ -35,6 +39,24 @@ export function formatVerify(report: VerifyReport): string {
       }
     }
   }
+  lines.push("", formatSequences(report));
+  return lines.join("\n");
+}
+
+function formatSequences(report: VerifyReport): string {
+  const behind = report.sequences.filter((s) => s.status === "behind");
+  const unknown = report.sequences.filter((s) => s.status === "unknown");
+  if (report.sequences.length === 0) return "Sequences: none feed the verified tables.";
+  const lines = [
+    behind.length
+      ? `Sequences: ${behind.length} BEHIND the data on target (the next INSERT can fail with a duplicate key)`
+      : `Sequences: all ${report.sequences.length - unknown.length} readable sequence(s) on target are ahead of their data`,
+  ];
+  for (const s of behind) {
+    lines.push(`  BEHIND   ${s.table}.${s.column}: next value ${s.nextValue}, data already at ${s.dataValue}`);
+    lines.push(`           fix (run it yourself): ${s.fix}`);
+  }
+  for (const s of unknown) lines.push(`  UNKNOWN  ${s.table}.${s.column}: ${s.sequence} isn't readable with this role (grant SELECT on it)`);
   return lines.join("\n");
 }
 

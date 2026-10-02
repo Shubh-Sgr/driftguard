@@ -18,11 +18,11 @@ export interface RangeHash {
  * deterministic; without it, identical data could hash differently.
  */
 export async function hashRange(client: pg.PoolClient, spec: TableSpec, range: KeyRange): Promise<RangeHash> {
-  const { pkList, rowExpr } = sqlParts(spec);
+  const { pkOrder, rowExpr } = sqlParts(spec);
   const { where, params } = rangeWhere(spec, range);
   const { rows } = await client.query<{ n: string; hash: string }>(
     `SELECT count(*) AS n,
-            coalesce(md5(string_agg(md5(${rowExpr}::text), '' ORDER BY ${pkList})), '') AS hash
+            coalesce(md5(string_agg(md5(${rowExpr}::text), '' ORDER BY ${pkOrder})), '') AS hash
      FROM ${spec.sql} ${where}`,
     params,
   );
@@ -37,7 +37,7 @@ export async function hashRange(client: pg.PoolClient, spec: TableSpec, range: K
 export async function hashWholeTable(client: pg.PoolClient, spec: TableSpec): Promise<RangeHash> {
   const { rowExpr } = sqlParts(spec);
   const { rows } = await client.query<{ n: string; hash: string }>(
-    `SELECT count(*) AS n, coalesce(md5(string_agg(h, '' ORDER BY h)), '') AS hash
+    `SELECT count(*) AS n, coalesce(md5(string_agg(h, '' ORDER BY h COLLATE "C")), '') AS hash
      FROM (SELECT md5(${rowExpr}::text) AS h FROM ${spec.sql}) AS row_hashes`,
   );
   return { rows: Number(rows[0]!.n), hash: rows[0]!.hash };
@@ -53,11 +53,11 @@ export async function hashWholeTable(client: pg.PoolClient, spec: TableSpec): Pr
  * source's min key or above its max) still fall into some chunk.
  */
 export async function chunkRanges(client: pg.PoolClient, spec: TableSpec, chunkSize: number): Promise<KeyRange[]> {
-  const { pkList, pkAsText } = sqlParts(spec);
+  const { pkList, pkOrder, pkAsText } = sqlParts(spec);
   const width = spec.primaryKey!.length;
   const { rows } = await client.query(
     `SELECT ${pkAsText}
-     FROM (SELECT ${pkList}, row_number() OVER (ORDER BY ${pkList}) AS rn FROM ${spec.sql}) AS numbered
+     FROM (SELECT ${pkList}, row_number() OVER (ORDER BY ${pkOrder}) AS rn FROM ${spec.sql}) AS numbered
      WHERE rn % $1 = 1 AND rn > 1
      ORDER BY rn`,
     [chunkSize],

@@ -1,9 +1,10 @@
-# Two identical PostgreSQL 16 databases. Eval scenarios later mutate `target-db`
-# to create known drift; `source-db` stays as the reference.
+# Two identical PostgreSQL databases (16 by default; PG_VERSION=13..17 picks another
+# major version, as CI does). Eval scenarios later mutate `target-db` to create known
+# drift; `source-db` stays as the reference.
 name: pgvouch
 
 x-postgres: &postgres
-  image: postgres:16-alpine
+  image: postgres:${PG_VERSION:-16}-alpine
   # Sized for an 8 GB laptop: small caches, few connections, a hard memory cap.
   command: ["postgres", "-c", "shared_buffers=128MB", "-c", "max_connections=40", "-c", "work_mem=8MB", "-c", "maintenance_work_mem=128MB"]
   mem_limit: 768m

@@ -89,17 +89,28 @@ program
 
 program
   .command("verify")
-  .description("Prove table data is identical with chunked checksums (exit code 1 if not)")
+  .description("Prove table data is identical with chunked checksums, and check sequences (exit code 1 if not)")
   .option("--table <names...>", "only these tables")
+  .option("--schema <names...>", "schemas to verify (default public)")
   .option("--chunk-size <n>", "rows per chunk (>= 100)", intAtLeast(100), 10_000)
   .option("--rows", "bisect mismatched chunks to list the exact differing rows")
   .option("--max-rows <n>", "stop after this many differing rows", intAtLeast(1), 1000)
+  .option("--recheck <rounds>", "on a target still being replicated to: look at differences again up to this many times and report only those that never catch up", intAtLeast(1))
+  .option("--recheck-delay <seconds>", "wait before each recheck", intAtLeast(1), 5)
   .option("--json", "print JSON")
   .action((opts) =>
     withPgVouch(async (dg) => {
-      const report = await dg.verifyData({ tables: opts.table, chunkSize: opts.chunkSize, findRows: opts.rows, maxRows: opts.maxRows });
+      const report = await dg.verifyData({
+        tables: opts.table,
+        schemas: opts.schema,
+        chunkSize: opts.chunkSize,
+        findRows: opts.rows,
+        maxRows: opts.maxRows,
+        recheck: opts.recheck,
+        recheckDelayMs: opts.recheckDelay * 1000,
+      });
       print(opts.json, report, () => formatVerify(report));
-      if (!report.identical) process.exitCode = 1;
+      if (!report.identical || !report.sequencesOk) process.exitCode = 1;
     }),
   );
 

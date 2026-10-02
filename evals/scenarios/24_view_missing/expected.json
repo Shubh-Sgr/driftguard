@@ -1,0 +1,6 @@
+{
+  "description": "View dropped on target",
+  "drift": [
+    "view_missing:public.customer_account_counts"
+  ]
+}

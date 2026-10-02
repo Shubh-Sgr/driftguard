@@ -20,6 +20,8 @@ interface Expected {
   drift: string[];
   /** table -> expected differences; "*" = verify every table, expect none. */
   data?: Record<string, { rows?: { kind: string; key: Record<string, string> }[]; localized?: boolean }>;
+  /** "schema.table.column" whose sequence should be reported as behind its data (default none). */
+  sequencesBehind?: string[];
 }
 
 export interface PlanOutcome {
@@ -48,6 +50,8 @@ export interface ScenarioResult {
     rowsInMismatchedTables: number;
     hashQueries: number;
     verifyMs: number;
+    /** Sequence health on the verified tables: behind-the-data sequences found vs expected. */
+    sequences: { checked: number; tp: number; fp: number; fn: number; falsePositives: string[]; missed: string[] };
   };
   rulesPlan?: PlanOutcome;
   llmPlan?: PlanOutcome;
@@ -87,7 +91,7 @@ export async function runScenarios(dir: string, source: pg.Pool, sourceSchema: S
         },
       };
 
-      if (expected.data) result.data = await scoreData(source, target, expected.data);
+      if (expected.data) result.data = await scoreData(source, target, expected.data, expected.sequencesBehind ?? []);
 
       if (!drift.identical) {
         const rules = await planMigration({ drift, source: sourceSchema, target: targetSchema });
@@ -110,10 +114,19 @@ export async function runScenarios(dir: string, source: pg.Pool, sourceSchema: S
   return results;
 }
 
-async function scoreData(source: pg.Pool, target: pg.Pool, expected: NonNullable<Expected["data"]>): Promise<NonNullable<ScenarioResult["data"]>> {
+async function scoreData(source: pg.Pool, target: pg.Pool, expected: NonNullable<Expected["data"]>, sequencesBehind: string[]): Promise<NonNullable<ScenarioResult["data"]>> {
   const all = "*" in expected;
   const report = await verifyData(source, target, { tables: all ? undefined : Object.keys(expected), findRows: true, maxRows: 1000 });
-  const score = { tablesTp: 0, tablesFp: 0, tablesFn: 0, rowsExpected: 0, rowsFound: 0, rowsFalse: 0, rowsFetched: 0, rowsInMismatchedTables: 0, hashQueries: 0, verifyMs: report.elapsedMs };
+  const behind = report.sequences.filter((s) => s.status === "behind").map((s) => `${s.table}.${s.column}`);
+  const sequences = {
+    checked: report.sequences.length,
+    tp: behind.filter((k) => sequencesBehind.includes(k)).length,
+    fp: behind.filter((k) => !sequencesBehind.includes(k)).length,
+    fn: sequencesBehind.filter((k) => !behind.includes(k)).length,
+    falsePositives: behind.filter((k) => !sequencesBehind.includes(k)),
+    missed: sequencesBehind.filter((k) => !behind.includes(k)),
+  };
+  const score = { tablesTp: 0, tablesFp: 0, tablesFn: 0, rowsExpected: 0, rowsFound: 0, rowsFalse: 0, rowsFetched: 0, rowsInMismatchedTables: 0, hashQueries: 0, verifyMs: report.elapsedMs, sequences };
 
   for (const t of report.tables) {
     const exp = expected[t.table];

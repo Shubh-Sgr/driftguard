@@ -10,7 +10,7 @@ Requirements: Node 22 (or 20.12+) and Docker.
 git clone https://github.com/Shubh-Sgr/pgvouch.git && cd pgvouch
 npm install
 cp .env.example .env
-npm run db:up        # add SEED_TRANSACTIONS=20000 for a faster, smaller seed
+npm run db:up        # add SEED_TRANSACTIONS=20000 for a faster, smaller seed; PG_VERSION=13..17 for another Postgres (default 16)
 npm run cli -- doctor
 ```
 

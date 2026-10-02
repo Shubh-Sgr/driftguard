@@ -1,0 +1,6 @@
+{
+  "description": "Extension not installed on target",
+  "drift": [
+    "extension_missing:pgcrypto"
+  ]
+}

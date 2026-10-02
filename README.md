@@ -27,12 +27,13 @@ All numbers come from `npm run eval` against the seeded Docker databases. The fu
 
 | What | Result |
 |---|---|
-| Drift detection over 23 seeded scenarios | **100% precision, 100% recall** (25 true positives, 0 false positives, 0 missed) |
+| Drift detection over 32 seeded scenarios (tables, views, functions, triggers, enums, extensions, RLS) | **100% precision, 100% recall** (34 true positives, 0 false positives, 0 missed) |
 | Exact differing rows found by checksum bisection | **100%** of seeded row changes, **0** false rows |
 | Rows fetched to find them | **311 rows** instead of **6,079,997** (the rows in the mismatched tables, both sides) |
-| Lock mode predicted vs lock actually taken (read from `pg_locks`) | **30/30** statements |
-| Table rewrite predicted vs actual rewrite (`pg_class.relfilenode` changed) | **29/29** statements |
-| Rules-only migration plans that pass a shadow run on a real schema copy | **19/19** |
+| Lock mode predicted vs lock actually taken (read from `pg_locks`) | **36/36** statements, on PostgreSQL 13, 14, 15, 16 and 17 |
+| Table rewrite predicted vs actual rewrite (`pg_class.relfilenode` changed) | **35/35** statements |
+| Sequence left behind its data after a copy (next INSERT would hit a duplicate key) | **found 1/1**, 0 false alarms in 10 checks |
+| Rules-only migration plans that pass a shadow run on a real schema copy | **27/27** |
 | LLM plans (local llama3.2, 3B), 17 drift scenarios of the first 21-scenario suite, *validator-only acceptance (v0.1.0)* | **5.9%** valid on first try, **17.6%** after one retry, **82.4%** fell back to the rules plan; **0/3** accepted LLM plans passed the shadow run |
 
 **Application stall during the migration**, measured on the 1M-row table with a probe query every ~10 ms ([evals/results-rewrite.md](evals/results-rewrite.md)):
@@ -46,7 +47,7 @@ All numbers come from `npm run eval` against the seeded Docker databases. The fu
 | `ADD COLUMN ... NOT NULL DEFAULT gen_random_uuid()` | 10.94 s | 964 ms | 108.7 s (batched backfill) |
 | `ALTER COLUMN merchant_id TYPE bigint` | 6.51 s | 93 ms | 28.0 s (includes re-creating its foreign key; +3 manual steps) |
 
-**What the LLM numbers show:** a small local model is not reliable at migration planning. That's why PgVouch never trusts it. The validator rejected 14/17 plans (unparseable SQL, hallucinated or duplicate objects, blocking DDL). The 3 it accepted were *safe but incomplete*, and only the shadow run caught that (e.g. a missing index and a sequence left out when re-creating a dropped table). Deterministic rules plans passed all 17 (19/19 with the two type-change scenarios added later). Details: [evals/results-llm.md](evals/results-llm.md).
+**What the LLM numbers show:** a small local model is not reliable at migration planning. That's why PgVouch never trusts it. The validator rejected 14/17 plans (unparseable SQL, hallucinated or duplicate objects, blocking DDL). The 3 it accepted were *safe but incomplete*, and only the shadow run caught that (e.g. a missing index and a sequence left out when re-creating a dropped table). Deterministic rules plans passed all 17 (27/27 with the scenarios added later). Details: [evals/results-llm.md](evals/results-llm.md).
 
 **What changed because of it:** those numbers were measured when the validator alone decided. Now an LLM plan is accepted only if it passes the validator **and** a shadow run whose result matches the source exactly; a shadow failure is sent back to the LLM for one retry, then PgVouch falls back to the rules plan. So the 3 incomplete plans above would now be rejected. The LLM eval has not been re-run with the new pipeline yet, so there is no new number here.
 
@@ -78,14 +79,14 @@ flowchart LR
 | # | Feature | How |
 |---|---|---|
 | F1 | Schema introspection | `pg_catalog` (not `information_schema`, which hides index methods, partial-index predicates and `NOT VALID`) |
-| F2 | Drift detection | A pure `diffSchemas(source, target)`: deterministic and sorted, with severity rules, and it never guesses renames |
-| F3 | Data verification | `md5(string_agg(md5(row::text) ORDER BY pk))` per primary-key chunk, inside a `REPEATABLE READ` snapshot with normalized session settings |
+| F2 | Drift detection | A pure `diffSchemas(source, target)` over tables, columns, indexes, constraints, sequences, views, functions, triggers (including disabled ones), enum types, extensions and row-level security: deterministic and sorted, with severity rules, and it never guesses renames |
+| F3 | Data verification | `md5(string_agg(md5(row::text) ORDER BY pk))` per primary-key chunk, inside a `REPEATABLE READ` snapshot with normalized session settings. Text keys are ordered byte-wise (`COLLATE "C"`), so servers with different collations agree. Also checks that every identity/serial sequence on the target is ahead of its data. On a target still being replicated to, `--recheck` looks at the differences again after a delay and reports only those that never catch up |
 | F4 | Checksum bisection | Merkle-style: split the mismatched chunk at its median key and recurse only into halves whose hashes differ |
 | F5 | Lock analyzer | [libpg-query](https://github.com/launchql/libpg-query-node) (Postgres' own parser, WASM) → rule table → risk from `reltuples` |
 | F6 | Safe rewrites | `CONCURRENTLY`, `NOT VALID` + `VALIDATE`, `UNIQUE ... USING INDEX`, expand/contract, batched `DO` loops with `COMMIT` per batch |
 | F7 | Guarded LLM planner | zod-checked JSON → validator (parses, allow-list, objects exist, no unsafe DDL) → shadow run (the result must match the source) → one retry with the errors → rules-only fallback |
 | F8 | MCP server | 7 read-only tools over stdio |
-| F9 | Eval suite | 23 drift/data scenarios, 30 lock statements with ground truth from Postgres, and a stall benchmark under load |
+| F9 | Eval suite | 32 drift/data scenarios, 36 lock statements with ground truth from Postgres, and a stall benchmark under load |
 | F10 | Shadow runs | Copies the target's *schema* into a disposable container, applies the plan, and diffs the result against the source |
 | F11 | Reversibility | Tags each step `reversible` / `reversible-with-backfill` / `data-lossy` and generates rollback SQL |
 | F12 | Receipts | JSON of drift + verification + plan + shadow, with a SHA-256 over canonical (sorted-key) JSON |
@@ -139,6 +140,7 @@ pgvouch doctor   # must say read_only=true and write privileges: none
 ```bash
 pgvouch diff                                      # schema drift (exit code 1 if any)
 pgvouch verify --rows                             # checksums + exact differing rows
+pgvouch verify --rows --recheck 3                 # target still being replicated to: ignore rows in flight
 pgvouch locks my_migration.sql                    # lock impact per statement, with real table sizes
 pgvouch preflight my_migration.sql                # would it have to wait for locks RIGHT NOW?
 pgvouch rewrite my_migration.sql                  # safe multi-step script
@@ -182,6 +184,7 @@ Every command from Option A works here as `npm run cli -- <command>`. These use 
 ```bash
 npm run cli -- diff                                   # schema drift (exit code 1 if any)
 npm run cli -- verify --rows                          # checksums + exact differing rows
+npm run cli -- verify --rows --recheck 3              # target still being replicated to: ignore rows in flight
 npm run cli -- locks examples/risky-migration.sql     # lock impact per statement
 npm run cli -- preflight examples/risky-migration.sql # would it have to wait for locks RIGHT NOW?
 npm run cli -- rewrite examples/risky-migration.sql   # safe multi-step script
@@ -199,7 +202,7 @@ PgVouch was built and measured on an 8 GB MacBook Air (M1). It stays responsive 
 
 - Give Docker Desktop **3 GB** of memory (Settings → Resources). The two databases are capped at 768 MB each in `docker-compose.yml`, and shadow containers at 256 MB.
 - Run one heavy thing at a time: `db:up`, integration tests, and evals each create or scan millions of rows.
-- Use `PGVOUCH_LLM=none` unless you need the LLM planner. When it's used, Ollama unloads the model 30 s after the last request.
+- `PGVOUCH_LLM=none` is the default, so nothing is ever sent to a model unless you turn it on. When you use the LLM planner, Ollama unloads the model 30 s after the last request.
 - Skip `npm run eval -- --llm ...` (~1 hour on a 3B model) unless you want those numbers; the default eval doesn't call an LLM.
 - Want an even lighter setup? Seed fewer rows: `npm run db:down && SEED_TRANSACTIONS=100000 npm run db:up` (seconds instead of ~3 min). CI uses 20,000. The published eval numbers and `npm run eval` need the default 1,000,000.
 
@@ -381,8 +384,8 @@ The demo data is only for trying it out. To use PgVouch for real:
 | Situation | Source → Target | Use |
 |---|---|---|
 | Staging vs production (the data is supposed to differ) | staging → prod | `diff`, `plan`, `shadow` (schema only) |
-| Moving a database (cloud move, version upgrade, blue/green) | old → new | `diff` **and** `verify --rows` (the data should be identical) |
-| Replica / CDC pipeline check | primary → replica | `verify --rows` |
+| Moving a database (cloud move, version upgrade, blue/green) | old → new | `diff` **and** `verify --rows` (the data should be identical); add `--recheck 3` while replication is still running |
+| Replica / CDC pipeline check | primary → replica | `verify --rows --recheck 3` |
 | Reviewing a migration before it runs | (the database it will run on) | `locks`, `rewrite` |
 
 **2. Create a read-only role** on each database (as an admin):
@@ -430,7 +433,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: Shubh-Sgr/pgvouch@v0.3.2 # or pin the release's commit SHA
+      - uses: Shubh-Sgr/pgvouch@v0.4.0 # or pin the release's commit SHA
         with:
           paths: migrations/**/*.sql     # one glob per line
           fail-on: high                  # optional: fail the check at this risk
@@ -462,10 +465,15 @@ Or run the same report locally: `pgvouch review --format markdown migrations/*.s
 
 ## Limitations (honest list)
 
-- PostgreSQL only; tested on 16.
+- PostgreSQL only. CI runs the integration tests and the lock-accuracy eval on 13, 14, 15, 16 and 17; the published eval numbers are measured on 16.
+- Drift detection covers tables, columns, indexes, constraints, sequences, views, functions/procedures, triggers, enum types, extensions and row-level security. Not yet: grants and privileges, column collations, comments, publications/subscriptions, foreign servers, and table storage options.
+- Some object drift needs a human: installing or upgrading an extension (it needs a privileged role), a changed materialized view (re-create and refresh), an enum with extra or reordered labels (Postgres can't remove or reorder labels in place), and a view whose columns changed (`CREATE OR REPLACE VIEW` can't drop or retype columns; the shadow run reports it).
+- Text primary keys are compared byte-wise (`COLLATE "C"`) so that servers with different collations agree. Range scans on such keys can't use the primary-key index, so verifying a very large table with a text key is slower than one with an integer or uuid key.
+- With row-level security on, a role without `BYPASSRLS` only sees the rows its policies allow; `verify` then says so in a note on that table.
 - Renames are reported as drop + add, with an advisory `possible_rename` hint. PgVouch never auto-renames.
 - Tables without a primary key: a mismatch is detected, but the rows can't be localized.
-- Verification compares two snapshots. On a live system, run it during a write freeze or once replication has caught up.
+- Verification compares two snapshots, so on a live target rows still in flight differ. `verify --recheck N` looks at those differences again (every `--recheck-delay` seconds, default 5) and keeps only the ones that never catch up. It rechecks only what the first check found, so new writes don't keep a table failing. A row that changes on the source at every check can still be reported; it is marked "source still changing". For a final cutover sign-off, a short write freeze is still the strongest proof.
+- Logical replication doesn't copy sequence values, so on a logical replica `verify` reports them as behind until you set them at cutover. That is correct: it's the step people forget.
 - The lock analyzer knows about 30 statement shapes. Anything else is flagged "not in the rule table", never silently rated safe.
 - Automatic batched backfills need a single integer primary key; otherwise the backfill step becomes a manual template.
 - Shadow runs copy the **schema only**, so they prove the resulting structure, not timing under production load (the lock analyzer covers that).
@@ -484,7 +492,7 @@ Or run the same report locally: `pgvouch review --format markdown migrations/*.s
 ## Development
 
 ```bash
-npm test                  # 145 unit tests, no database needed
+npm test                  # 198 unit tests, no database needed
 npm run test:integration  # needs `npm run db:up` and Docker (shadow runs)
 npm run eval              # all evals → evals/results*.md
 npm run eval -- --only scenarios --llm llama3.2   # include LLM plans (needs Ollama)

@@ -43,6 +43,20 @@ describe("introspect (F1)", () => {
     expect(s.tables["public.fx_rates"]!.primaryKey).toBeNull();
     expect(s.sequences["public.invoice_number_seq"]).toBeDefined();
   });
+
+  it("reads views, functions, triggers, enums, extensions and row-level security", async () => {
+    const s = await introspect(source);
+    expect(s.views!["public.customer_account_counts"]).toMatchObject({ materialized: false });
+    expect(s.views!["public.customer_account_counts"]!.definition).toMatch(/count\(a\.id\) AS accounts/);
+    expect(s.routines!["public.audit_log_set_created_at()"]!.definition).toMatch(/^CREATE OR REPLACE FUNCTION public\.audit_log_set_created_at\(\)/);
+    expect(s.triggers!["public.audit_log.audit_log_created_at"]).toMatchObject({ table: "public.audit_log", state: "enabled" });
+    expect(s.enums!["public.card_status"]!.labels).toEqual(["active", "frozen", "closed"]);
+    expect(s.extensions!.pgcrypto).toMatchObject({ schema: "public" });
+    expect(s.policies!["public.audit_log.audit_log_read"]!.definition).toBe("CREATE POLICY audit_log_read ON audit_log AS PERMISSIVE FOR SELECT TO PUBLIC USING (true)");
+    expect(s.tables["public.audit_log"]!.rowSecurity).toEqual({ enabled: true, forced: false });
+    // pgcrypto's own functions belong to the extension and aren't listed one by one.
+    expect(Object.keys(s.routines!).filter((k) => k.startsWith("public.digest("))).toEqual([]);
+  });
 });
 
 describe("introspect + diff (F1 + F2) against real drift", () => {

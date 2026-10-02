@@ -49,8 +49,15 @@ export class ShadowUnavailableError extends Error {}
 
 // Drift left over on purpose: we skip data-lossy contract steps by default and never
 // run manual steps, so these kinds may remain without the plan being wrong.
-const EXPECTED_IF_CONTRACT_SKIPPED = new Set<DriftItem["kind"]>(["table_extra", "column_extra", "sequence_extra"]);
-const ALWAYS_MANUAL = new Set<DriftItem["kind"]>(["primary_key_changed", "possible_rename"]);
+const EXPECTED_IF_CONTRACT_SKIPPED = new Set<DriftItem["kind"]>([
+  "table_extra", "column_extra", "sequence_extra",
+  "view_extra", "function_extra", "trigger_extra", "policy_extra", "enum_extra",
+]);
+// Extensions need a privileged role, so the plan leaves them to a human.
+const ALWAYS_MANUAL = new Set<DriftItem["kind"]>([
+  "primary_key_changed", "possible_rename",
+  "extension_missing", "extension_extra", "extension_changed",
+]);
 
 // The role that runs plan SQL. Not a superuser: it can change the tables it owns, but it
 // can't read files, run programs (COPY ... PROGRAM) or change server settings, even if
@@ -68,8 +75,8 @@ const PLAN_ROLE = "pgvouch_plan_runner";
  */
 export async function shadowRun(opts: ShadowOptions): Promise<ShadowReport> {
   const started = Date.now();
-  const container = await unavailableOnError("could not start a shadow container (is Docker running?)", () =>
-    startShadowContainer(opts.image),
+  const container = await unavailableOnError("could not start a shadow container (is Docker running?)", async () =>
+    startShadowContainer(opts.image ?? (await imageForTarget(opts.targetUrl))),
   );
 
   // If the process is interrupted, still remove the container (async cleanup wouldn't finish).
@@ -179,6 +186,27 @@ async function createPlanRole(container: ShadowContainer): Promise<string> {
                            ELSE 'TABLE' END,
             r.nspname, r.relname);
         END LOOP;
+        -- Functions and standalone types too, or CREATE OR REPLACE FUNCTION and
+        -- ALTER TYPE ... ADD VALUE fail with "must be owner". Objects that belong to an
+        -- extension stay with it (the plan never changes those).
+        FOR r IN SELECT p.oid::regprocedure AS sig, p.prokind
+                 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname NOT LIKE 'pg\\_%' AND n.nspname <> 'information_schema'
+                   AND p.prokind IN ('f', 'p')
+                   AND NOT EXISTS (SELECT 1 FROM pg_depend d
+                                   WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e') LOOP
+          EXECUTE format('ALTER %s %s OWNER TO ${PLAN_ROLE}',
+            CASE r.prokind WHEN 'p' THEN 'PROCEDURE' ELSE 'FUNCTION' END, r.sig);
+        END LOOP;
+        FOR r IN SELECT t.oid::regtype AS typ, t.typtype
+                 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
+                 WHERE n.nspname NOT LIKE 'pg\\_%' AND n.nspname <> 'information_schema'
+                   AND t.typtype IN ('e', 'd', 'r')
+                   AND NOT EXISTS (SELECT 1 FROM pg_depend d
+                                   WHERE d.classid = 'pg_type'::regclass AND d.objid = t.oid AND d.deptype = 'e') LOOP
+          EXECUTE format('ALTER %s %s OWNER TO ${PLAN_ROLE}',
+            CASE r.typtype WHEN 'd' THEN 'DOMAIN' ELSE 'TYPE' END, r.typ);
+        END LOOP;
       END $$`);
   } finally {
     await admin.end();
@@ -191,6 +219,24 @@ async function unavailableOnError<T>(what: string, fn: () => Promise<T>): Promis
     return await fn();
   } catch (err) {
     throw new ShadowUnavailableError(`${what}: ${(err as Error).message}`);
+  }
+}
+
+/**
+ * The shadow must run the target's MAJOR version: a pg_dump older than the server refuses
+ * to dump it (16 can't dump 17), and plan SQL should meet the same Postgres as production.
+ */
+async function imageForTarget(targetUrl: string): Promise<string> {
+  const client = new pg.Client({ connectionString: targetUrl });
+  try {
+    await client.connect();
+    const { rows } = await client.query<{ v: string }>("SELECT current_setting('server_version_num') AS v");
+    const major = Math.floor(Number(rows[0]?.v) / 10_000);
+    return Number.isInteger(major) && major >= 10 ? `postgres:${major}-alpine` : "postgres:16-alpine";
+  } catch {
+    return "postgres:16-alpine"; // copying the schema will report the real problem
+  } finally {
+    await client.end().catch(() => undefined);
   }
 }
 

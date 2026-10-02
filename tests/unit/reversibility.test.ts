@@ -27,6 +27,12 @@ describe("reversibility classifier (F11)", () => {
     ["ALTER TABLE accounts DROP COLUMN status", "data-lossy", null],
     ["DROP TABLE accounts", "data-lossy", null],
     ["TRUNCATE accounts", "data-lossy", null],
+    ["CREATE TRIGGER t1 BEFORE INSERT ON accounts FOR EACH ROW EXECUTE FUNCTION f()", "reversible", "DROP TRIGGER t1 ON accounts"],
+    ["CREATE POLICY p ON accounts FOR SELECT USING (true)", "reversible", "DROP POLICY p ON accounts"],
+    ["CREATE OR REPLACE VIEW new_view AS SELECT 1", "reversible", "DROP VIEW new_view"],
+    ["ALTER TABLE accounts DISABLE TRIGGER t1", "reversible", "ALTER TABLE accounts ENABLE TRIGGER t1"],
+    ["ALTER TABLE accounts ENABLE ROW LEVEL SECURITY", "reversible", "ALTER TABLE accounts DISABLE ROW LEVEL SECURITY"],
+    ["ALTER TYPE s ADD VALUE 'x'", "unknown", null],
   ])("%s -> %s", async (sql, reversibility, rollbackSql) => {
     expect(await classify(sql)).toMatchObject({ reversibility, rollbackSql });
   });

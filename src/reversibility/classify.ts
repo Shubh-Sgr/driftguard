@@ -38,6 +38,26 @@ export function classifyReversibility(stmt: ParsedStatement, schema?: Schema): R
     case "CreateSeqStmt":
       return r("reversible", `DROP SEQUENCE ${tableRef(rangeVarName(n.sequence))}`, "The sequence is new.");
 
+    case "CreateTrigStmt":
+      return n.replace
+        ? r("unknown", null, "CREATE OR REPLACE TRIGGER: undoing it needs the previous definition.")
+        : r("reversible", `DROP TRIGGER ${ident(n.trigname)} ON ${tableRef(rangeVarName(n.relation))}`, "The trigger is new.");
+
+    case "CreatePolicyStmt":
+      return r("reversible", `DROP POLICY ${ident(n.policy_name)} ON ${tableRef(rangeVarName(n.table))}`, "The policy is new.");
+
+    case "ViewStmt": {
+      const key = rangeVarName(n.view);
+      const before = schema?.views?.[key];
+      if (!schema) return r("unknown", null, "Undoing a view change needs the previous schema.");
+      return before
+        ? r("reversible", `CREATE OR REPLACE VIEW ${tableRef(key)} AS ${before.definition.trim().replace(/;$/, "")}`, "Restore the previous view definition.")
+        : r("reversible", `DROP VIEW ${tableRef(key)}`, "The view is new.");
+    }
+
+    case "AlterEnumStmt":
+      return r("unknown", null, "Postgres can't remove an enum label once added; undoing it means re-creating the type.");
+
     case "RenameStmt": {
       const t = tableRef(rangeVarName(n.relation));
       if (n.renameType === "OBJECT_COLUMN") return r("reversible", `ALTER TABLE ${t} RENAME COLUMN ${ident(n.newname)} TO ${ident(n.subname)}`, "Rename back.");
@@ -111,6 +131,18 @@ function classifyAlterCmd(table: string, cmd: AstNode, schema?: Schema): Reversi
         ? r("reversible", `ALTER TABLE ${t} DROP CONSTRAINT ${ident(name)}`, "Drop the new constraint.")
         : r("reversible", null, "Reversible, but the constraint is unnamed; look up its generated name first.");
     }
+    case "AT_EnableTrig":
+      return r("reversible", `ALTER TABLE ${t} DISABLE TRIGGER ${ident(cmd.name)}`, "Disable the trigger again.");
+    case "AT_DisableTrig":
+      return r("reversible", `ALTER TABLE ${t} ENABLE TRIGGER ${ident(cmd.name)}`, "Enable the trigger again.");
+    case "AT_EnableRowSecurity":
+      return r("reversible", `ALTER TABLE ${t} DISABLE ROW LEVEL SECURITY`, "Turn row-level security off again.");
+    case "AT_DisableRowSecurity":
+      return r("reversible", `ALTER TABLE ${t} ENABLE ROW LEVEL SECURITY`, "Turn row-level security on again.");
+    case "AT_ForceRowSecurity":
+      return r("reversible", `ALTER TABLE ${t} NO FORCE ROW LEVEL SECURITY`, "Stop forcing row-level security on the owner again.");
+    case "AT_NoForceRowSecurity":
+      return r("reversible", `ALTER TABLE ${t} FORCE ROW LEVEL SECURITY`, "Force row-level security on the owner again.");
     case "AT_ValidateConstraint":
       return r("reversible", null, "Validation changes no data; nothing to undo.");
     case "AT_DropConstraint": {

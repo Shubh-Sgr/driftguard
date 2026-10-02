@@ -1,5 +1,5 @@
 {
-  "runAt": "2026-09-30T09:21:06.467Z",
+  "runAt": "2026-10-01T15:56:56.416Z",
   "environment": {
     "node": "v22.23.1",
     "platform": "darwin arm64",
@@ -304,6 +304,66 @@
       "predictedMode": "SHARE",
       "predictedRewrite": false,
       "measuredMode": "SHARE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "CREATE TRIGGER eval_tr BEFORE UPDATE ON audit_log FOR EACH ROW EXECUTE FUNCTION audit_log_set_created_at()",
+      "table": "audit_log",
+      "predictedMode": "SHARE ROW EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "SHARE ROW EXCLUSIVE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "ALTER TABLE audit_log DISABLE TRIGGER audit_log_created_at",
+      "table": "audit_log",
+      "predictedMode": "SHARE ROW EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "SHARE ROW EXCLUSIVE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "DROP TRIGGER audit_log_created_at ON audit_log",
+      "table": "audit_log",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "ACCESS EXCLUSIVE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "CREATE POLICY eval_pol ON audit_log FOR SELECT USING (true)",
+      "table": "audit_log",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "ACCESS EXCLUSIVE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "DROP POLICY audit_log_read ON audit_log",
+      "table": "audit_log",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "ACCESS EXCLUSIVE",
+      "measuredRewrite": false,
+      "method": "in-transaction",
+      "modeCorrect": true
+    },
+    {
+      "sql": "ALTER TABLE accounts ENABLE ROW LEVEL SECURITY",
+      "table": "accounts",
+      "predictedMode": "ACCESS EXCLUSIVE",
+      "predictedRewrite": false,
+      "measuredMode": "ACCESS EXCLUSIVE",
       "measuredRewrite": false,
       "method": "in-transaction",
       "modeCorrect": true

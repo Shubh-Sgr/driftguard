@@ -62,12 +62,13 @@ export class PgVouch {
   }
 
   /** F3 (+ F4 when findRows is set) */
-  verifyData(opts: VerifyOptions = {}): Promise<VerifyReport> {
+  async verifyData(opts: VerifyOptions = {}): Promise<VerifyReport> {
+    if (opts.schemas?.length) await this.requireSchemas(opts.schemas);
     return verifyData(this.source, this.target, opts);
   }
 
   /** F4 for one table */
-  findDifferingRows(table: string, opts: { chunkSize?: number; maxRows?: number } = {}): Promise<TableVerification> {
+  findDifferingRows(table: string, opts: Pick<VerifyOptions, "chunkSize" | "maxRows" | "recheck" | "recheckDelayMs"> = {}): Promise<TableVerification> {
     return findDifferingRowsInTable(this.source, this.target, table, opts);
   }
 
