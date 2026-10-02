@@ -48,6 +48,7 @@ Small commits with [Conventional Commit](https://www.conventionalcommits.org/) m
 
 1. On a branch: bump `version` in `package.json`, `package-lock.json` and `src/version.ts`, and move the "Unreleased" changelog entries under the new version. Merge it through a pull request.
 2. Create a GitHub release on `main` with the tag `vX.Y.Z` (the same version). Mark it as a pre-release to publish under the npm `next` tag.
-3. The [Release workflow](.github/workflows/release.yml) checks that the tag matches `package.json`, runs the typecheck, unit tests and build, and publishes to npm with provenance. No npm token is involved: npm trusts this repository's `release.yml` (set once under the package's settings on npmjs.com → Trusted publishing).
+3. The [Release workflow](.github/workflows/release.yml) checks that the tag matches `package.json`, runs the typecheck, unit tests and build, and **stages** the version on npm with provenance. No npm token is involved: npm trusts this repository's `release.yml` (set once under the package's settings on npmjs.com → Trusted publishing, stage-only).
+4. Approve it with 2FA: npmjs.com → pgvouch → Staged Packages, or `npm stage list pgvouch` then `npm stage approve <id>`. Only then is the version public.
 
 By contributing, you agree that your contributions are licensed under the [Apache License 2.0](LICENSE) (see section 5 of the license), including its patent grant.
